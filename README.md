@@ -1,6 +1,6 @@
 # Job Log — Extensión de Chrome para registrar tus postulaciones
 
-**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge y Opera. Registra automáticamente tus postulaciones de LinkedIn en una hoja de cálculo de Google Sheets, usando la API de Gemini para extraer la información de cada oferta.
+**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge y Opera. Registra automáticamente tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn obtiene los datos de la oferta (título y empresa) directamente desde la API interna de LinkedIn usando tu propia sesión; en otros portales de empleo usa la API de Gemini para extraer la información del texto de la oferta.
 
 Todo corre en tu navegador. Sin servidores. Sin intermediarios.
 
@@ -62,9 +62,9 @@ La extensión necesita una API Key de Gemini para leer los datos de cada oferta:
 
 ## Paso 3 — Usar la extensión
 
-1. Abrí cualquier oferta de empleo en **LinkedIn**.
+1. Abrí cualquier oferta de empleo en **LinkedIn** (u otro portal soportado).
 2. Hacé clic en el ícono de **Job Log**.
-3. La IA va a extraer automáticamente la empresa, el título del cargo, el enlace y el origen.
+3. La extensión va a extraer automáticamente la empresa, el título del cargo, el enlace y el origen.
 4. Revisá los datos, seleccioná el estado de tu postulación (*Postulado*, *En proceso*, *CV enviado*, etc.) y hacé clic en **Registrar postulación**.
 5. La fila se agrega instantáneamente a tu planilla.
 
@@ -84,7 +84,8 @@ Sin embargo, el acceso está limitado a nivel de código. Podés revisar el arch
 
 La extensión corre completamente en tu navegador. El flujo de datos es directo:
 
-**LinkedIn → API de Gemini → API de Google Sheets (tu cuenta)**
+- **En LinkedIn:** el título y la empresa se obtienen de la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión ya iniciada, y se guardan directamente en tu Google Sheets. Para estas ofertas no interviene Gemini.
+- **En otros portales:** el texto de la oferta se envía a la API de Gemini para estructurar los datos, que luego se guardan en tu Google Sheets.
 
 Ningún dato personal ni credencial pasa por un servidor externo.
 

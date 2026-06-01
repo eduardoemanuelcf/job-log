@@ -15,8 +15,9 @@ Para funcionar, la extensión requiere que ingreses dos datos en la configuraci�
 * **Acceso Privado:** Tus credenciales nunca son enviadas a nosotros ni a terceros. Su único propósito es autenticar tus peticiones locales directamente ante las APIs oficiales de Google Gemini y Google Sheets.
 
 ## 3. Transferencia de Datos
-El flujo de información es directo y encriptado entre tu navegador y los servicios oficiales de Google:
-* El texto de la oferta de LinkedIn se envía temporalmente a la API oficial de Google Gemini (`https://generativelanguage.googleapis.com`) para estructurar los datos del empleo.
+El flujo de información es directo y encriptado entre tu navegador y los servicios involucrados:
+* En LinkedIn, el título y la empresa de la oferta se leen directamente desde la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión activa en el navegador. Para estas ofertas no se utiliza Gemini.
+* En otros portales de empleo, el texto de la oferta se envía temporalmente a la API oficial de Google Gemini (`https://generativelanguage.googleapis.com`) para estructurar los datos del empleo.
 * Los datos estructurados se envían directamente a tu cuenta de Google Sheets a través de la API oficial de Google Sheets (`https://sheets.googleapis.com`).
 
 ## 4. Cambios en esta Política

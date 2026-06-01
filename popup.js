@@ -343,12 +343,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                     chrome.scripting.executeScript(
                         {
                             target: { tabId: tab.id },
-                            func: () => {
+                            func: async () => {
                                 try {
                                     let url = window.location.href;
-                                    const jobIdMatch = url.match(/currentJobId=(\d+)/);
-                                    if (jobIdMatch) {
-                                        url = `https://www.linkedin.com/jobs/view/${jobIdMatch[1]}/`;
+                                    let jobId = null;
+                                    const currentJobIdMatch = url.match(/currentJobId=(\d+)/);
+                                    const viewJobIdMatch = url.match(/\/jobs\/view\/(\d+)/);
+                                    if (currentJobIdMatch) {
+                                        jobId = currentJobIdMatch[1];
+                                    } else if (viewJobIdMatch) {
+                                        jobId = viewJobIdMatch[1];
+                                    }
+                                    if (jobId) {
+                                        url = `https://www.linkedin.com/jobs/view/${jobId}/`;
                                     }
 
                                     const host = window.location.hostname.replace(/^www\./, '');
@@ -372,40 +379,187 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     };
                                     const source = BRAND_MAP[brand] || (brand.charAt(0).toUpperCase() + brand.slice(1));
 
+                                    const getVisibleElement = (selector) => {
+                                        const elements = document.querySelectorAll(selector);
+                                        for (const el of elements) {
+                                            const rect = el.getBoundingClientRect();
+                                            if (rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden') {
+                                                return el;
+                                            }
+                                        }
+                                        return null;
+                                    };
+
+                                    const DETAIL_SELECTORS = '.jobs-search__job-details--wrapper, .jobs-search__job-details, .jobs-details__main-content, .scaffold-layout__detail, .jobs-search-two-pane__job-details, .job-details-jobs-unified-top-card, .jobs-unified-top-card, .jobs-details, .job-view-layout, .jobs-description';
+
+                                    const firstLine = (s) => {
+                                        if (!s) return '';
+                                        const lines = s.split('\n').map(l => l.trim()).filter(Boolean);
+                                        return lines.length ? lines[0] : s.trim();
+                                    };
+
+                                    const pickIn = (scope, sel) => {
+                                        if (!scope) return '';
+                                        const selectors = sel.split(',').map(s => s.trim());
+                                        for (const selector of selectors) {
+                                            const elements = scope.querySelectorAll(selector);
+                                            for (const el of elements) {
+                                                const rect = el.getBoundingClientRect();
+                                                if (rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).display !== 'none') {
+                                                    const t = el.innerText.trim();
+                                                    if (t) return t;
+                                                }
+                                            }
+                                        }
+                                        for (const selector of selectors) {
+                                            const el = scope.querySelector(selector);
+                                            if (el && el.innerText.trim()) return el.innerText.trim();
+                                        }
+                                        return '';
+                                    };
+
                                     const detailPanel =
-                                        document.querySelector('.jobs-search__job-details--wrapper') ||
-                                        document.querySelector('.jobs-search__job-details') ||
-                                        document.querySelector('.jobs-details__main-content') ||
-                                        document.querySelector('.scaffold-layout__detail');
+                                        getVisibleElement('.jobs-search__job-details--wrapper') ||
+                                        getVisibleElement('.jobs-search__job-details') ||
+                                        getVisibleElement('.jobs-details__main-content') ||
+                                        getVisibleElement('.scaffold-layout__detail') ||
+                                        getVisibleElement('.jobs-search-two-pane__job-details') ||
+                                        getVisibleElement('.jobs-details') ||
+                                        getVisibleElement('.job-view-layout') ||
+                                        getVisibleElement('.jobs-description');
 
-                                    const isSearchLayout = !!document.querySelector(
-                                        '.jobs-search-results-list, .scaffold-layout__list, .jobs-search-results-list__list-item'
-                                    );
-
-                                    let container = detailPanel;
-                                    if (!container && !isSearchLayout) {
-                                        container = document.querySelector('main') || document.body;
+                                    let jobAnchor = null;
+                                    if (jobId) {
+                                        jobAnchor =
+                                            getVisibleElement(`a[href*="/jobs/view/${jobId}"]`) ||
+                                            getVisibleElement(`[data-job-id="${jobId}"]`) ||
+                                            getVisibleElement(`[data-occludable-job-id="${jobId}"]`);
                                     }
 
-                                    if (!container) {
+                                    let titleEl =
+                                        getVisibleElement('.job-details-jobs-unified-top-card__job-title') ||
+                                        getVisibleElement('.jobs-unified-top-card__job-title');
+                                    if (!titleEl && detailPanel) {
+                                        titleEl = detailPanel.querySelector('h1') || detailPanel.querySelector('h2');
+                                    }
+                                    if (!titleEl) {
+                                        titleEl = getVisibleElement('h1');
+                                    }
+
+                                    let domTitle = titleEl ? firstLine(titleEl.innerText || titleEl.getAttribute('aria-label') || '') : '';
+                                    if (!domTitle && jobAnchor) {
+                                        domTitle = firstLine(jobAnchor.innerText || '') || firstLine(jobAnchor.getAttribute('aria-label') || '');
+                                    }
+
+                                    let companyScope = detailPanel;
+                                    if (!companyScope && titleEl) {
+                                        let node = titleEl;
+                                        for (let i = 0; i < 6 && node; i++) {
+                                            if (node.querySelector && node.querySelector('a[href*="/company/"]')) {
+                                                companyScope = node;
+                                                break;
+                                            }
+                                            node = node.parentElement;
+                                        }
+                                        if (!companyScope) {
+                                            companyScope = titleEl.closest(DETAIL_SELECTORS) || titleEl.parentElement;
+                                        }
+                                    }
+
+                                    let domCompany = firstLine(pickIn(
+                                        companyScope,
+                                        '.job-details-jobs-unified-top-card__company-name a, .job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name a, .jobs-unified-top-card__company-name, .job-details-jobs-unified-top-card__primary-description-container a[href*="/company/"], .artdeco-entity-lockup__subtitle, a[href*="/company/"]'
+                                    ));
+
+                                    const textScope = detailPanel || document.querySelector('main') || document.body;
+                                    const fullText = textScope ? textScope.innerText : '';
+                                    let text = fullText.substring(0, 6000);
+
+                                    let verified = false;
+                                    if (source === 'LinkedIn' && jobId) {
+                                        try {
+                                            const csrf = (document.cookie.match(/JSESSIONID="?([^";]+)"?/) || [])[1];
+                                            if (csrf) {
+                                                const apiGet = async (apiUrl) => {
+                                                    const ctrl = new AbortController();
+                                                    const abortTimer = setTimeout(() => ctrl.abort(), 6000);
+                                                    try {
+                                                        const r = await fetch(apiUrl, {
+                                                            headers: { 'csrf-token': csrf, 'accept': 'application/json' },
+                                                            credentials: 'include',
+                                                            signal: ctrl.signal
+                                                        });
+                                                        clearTimeout(abortTimer);
+                                                        return r.ok ? await r.json() : null;
+                                                    } catch (e) {
+                                                        clearTimeout(abortTimer);
+                                                        return null;
+                                                    }
+                                                };
+                                                const j = await apiGet(`https://www.linkedin.com/voyager/api/jobs/jobPostings/${jobId}`);
+                                                if (j && j.title) {
+                                                    domTitle = String(j.title).trim();
+                                                    verified = true;
+                                                    let comp = '';
+                                                    if (j.urlPathSegment) {
+                                                        const seg = String(j.urlPathSegment).replace(new RegExp('-' + jobId + '$'), '');
+                                                        const at = seg.lastIndexOf('-at-');
+                                                        if (at !== -1) {
+                                                            comp = seg.substring(at + 4).replace(/-/g, ' ').trim();
+                                                        }
+                                                    }
+                                                    if (comp) domCompany = comp;
+                                                    let companyId = '';
+                                                    try {
+                                                        const cm = JSON.stringify(j.companyDetails || {}).match(/fs_normalized_company:(\d+)/);
+                                                        if (cm) companyId = cm[1];
+                                                    } catch (_) {}
+                                                    if (companyId) {
+                                                        const cj = await apiGet(`https://www.linkedin.com/voyager/api/organization/companies/${companyId}`);
+                                                        const name = cj ? ((cj.data && cj.data.name) || cj.name) : '';
+                                                        if (name) domCompany = String(name).trim();
+                                                    }
+                                                    let desc = '';
+                                                    if (j.description) {
+                                                        desc = typeof j.description === 'string' ? j.description : (j.description.text || '');
+                                                    }
+                                                    text = `${domTitle}\n${domCompany}\n${desc}`.substring(0, 6000);
+                                                }
+                                            }
+                                        } catch (_) {}
+                                    }
+
+                                    if (!verified) {
+                                        const bodyText = (document.body && document.body.innerText) || fullText || '';
+                                        const lines = bodyText.split('\n').map((l) => l.trim());
+                                        for (let i = 0; i < lines.length; i++) {
+                                            const m = lines[i].match(/^empresa\b\s*:?\s*(.*)$/i);
+                                            if (m) {
+                                                let val = m[1].trim();
+                                                if (!val) {
+                                                    for (let k = i + 1; k < lines.length; k++) {
+                                                        if (lines[k]) { val = lines[k]; break; }
+                                                    }
+                                                }
+                                                if (val && val.length <= 80) {
+                                                    domCompany = val;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (!text && (domTitle || domCompany)) {
+                                        text = `${domTitle} ${domCompany}`.trim();
+                                    }
+
+                                    if (!domTitle && !domCompany && !text) {
                                         return {
-                                            error: 'No se encontró el panel de detalle de la oferta. Abrí la oferta (clic en ella) antes de registrarla.'
+                                            error: 'No se pudieron leer los datos de la oferta. Recargá la página (F5) y registrala de nuevo.'
                                         };
                                     }
 
-                                    const pick = (sel) => {
-                                        const el = container.querySelector(sel);
-                                        return el ? el.innerText.trim() : '';
-                                    };
-                                    const domTitle = pick(
-                                        '.job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1'
-                                    );
-                                    const domCompany = pick(
-                                        '.job-details-jobs-unified-top-card__company-name a, .job-details-jobs-unified-top-card__company-name, .jobs-unified-top-card__company-name'
-                                    );
-
-                                    const text = container.innerText.substring(0, 6000);
-                                    return { url, text, domTitle, domCompany, source };
+                                    return { url, text, domTitle, domCompany, source, verified };
                                 } catch (e) {
                                     return { error: e.message };
                                 }
@@ -432,16 +586,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const { url, text, domTitle, domCompany } = results;
             const detectedSource = results.source || 'LinkedIn';
+            const source = detectedSource;
+            let company;
+            let title;
+
+            if (results.verified && domTitle && domCompany) {
+                company = domCompany;
+                title = domTitle;
+            } else {
 
             status.innerHTML = '<span class="spinner"></span> Analizando con Gemini...';
 
             const hintBlock = (domTitle || domCompany)
-                ? `\nDatos detectados directamente en el encabezado de la oferta enfocada (son la referencia PRINCIPAL; usalos salvo que estén vacíos o claramente incompletos):\n- Título: ${domTitle || '(no detectado)'}\n- Empresa: ${domCompany || '(no detectado)'}\n`
+                ? `\nDatos detectados de la oferta principal (referencia PRINCIPAL; no los reemplaces por otra oferta del listado o sidebar):\n- Título: ${domTitle || '(no detectado)'}\n- Empresa: ${domCompany || '(no detectado)'}\n`
                 : '';
 
-            const promptText = `Analiza el siguiente texto de una oferta de empleo y extrae los siguientes datos en un formato JSON estructurado. El texto corresponde al detalle de UNA sola oferta; ignorá cualquier otra oferta que pudiera aparecer. El JSON debe contener exactamente tres campos de tipo string:
-- "company": el nombre de la empresa contratante.
-- "title": el título del puesto de trabajo.
+            const promptText = `Analiza el siguiente texto de una oferta de empleo y extrae los datos en un formato JSON estructurado. El texto puede incluir menús, barras laterales y secciones de "Trabajos Similares" u "Ofertas Guardadas" con OTRAS ofertas y empresas: ignoralas por completo y extraé solo los datos de la oferta principal (la de la descripción del puesto). La empresa contratante suele figurar junto a una etiqueta "Empresa". El JSON debe contener exactamente tres campos de tipo string:
+- "company": el nombre de la empresa contratante de la oferta principal.
+- "title": el título del puesto de la oferta principal.
 - "source": debe ser el string exacto "${detectedSource}".
 ${hintBlock}
 Texto a analizar:
@@ -478,6 +640,7 @@ ${text}`;
             let geminiData = null;
             let quotaHint = '';
             let lastError = null;
+            let had429 = false;
 
             for (let i = 0; i < GEMINI_MODELS.length; i++) {
                 const model = GEMINI_MODELS[i];
@@ -523,11 +686,13 @@ ${text}`;
                     } catch (_) {
                     }
                     lastError = 429;
+                    had429 = true;
                     continue;
                 }
 
                 if (!response.ok) {
-                    throw new Error(`Error al conectar con la API de Gemini (Status: ${response.status})`);
+                    lastError = `status ${response.status}`;
+                    continue;
                 }
 
                 const data = await response.json();
@@ -536,24 +701,43 @@ ${text}`;
                     continue;
                 }
 
+                let parsedData;
+                try {
+                    parsedData = JSON.parse(data.candidates[0].content.parts[0].text);
+                } catch (_) {
+                    lastError = 'respuesta inválida';
+                    continue;
+                }
+
+                if (!parsedData.company || !parsedData.title) {
+                    lastError = 'incompletos';
+                    continue;
+                }
+
+                company = parsedData.company;
+                title = parsedData.title;
                 geminiData = data;
                 break;
             }
 
             if (!geminiData) {
-                if (lastError === 429) {
-                    throw new Error(`Se agotó la cuota gratuita de todos los modelos de Gemini por hoy.${quotaHint}`);
+                if (had429) {
+                    throw new Error(`Se agotó la cuota gratuita de Gemini por hoy.${quotaHint}`);
+                }
+                if (lastError === 'incompletos') {
+                    throw new Error('Gemini no pudo extraer la empresa y el título de la oferta.');
                 }
                 throw new Error('No se pudo obtener una respuesta válida de Gemini.');
             }
 
-            const textResponse = geminiData.candidates[0].content.parts[0].text;
-            const parsedData = JSON.parse(textResponse);
-            const { company, title } = parsedData;
-            const source = detectedSource;
+            }
+
+            if (domCompany) {
+                company = domCompany;
+            }
 
             if (!company || !title || !source) {
-                throw new Error('Campos incompletos en la respuesta de la API de Gemini');
+                throw new Error('No se pudieron determinar los datos de la oferta.');
             }
 
             status.innerHTML = '<span class="spinner"></span> Solicitando permisos de Google...';
