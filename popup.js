@@ -531,20 +531,53 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                                     if (!verified) {
                                         const bodyText = (document.body && document.body.innerText) || fullText || '';
-                                        const lines = bodyText.split('\n').map((l) => l.trim());
-                                        for (let i = 0; i < lines.length; i++) {
-                                            const m = lines[i].match(/^empresa\b\s*:?\s*(.*)$/i);
-                                            if (m) {
-                                                let val = m[1].trim();
-                                                if (!val) {
-                                                    for (let k = i + 1; k < lines.length; k++) {
-                                                        if (lines[k]) { val = lines[k]; break; }
+                                        const rawLines = bodyText.split('\n').map((l) => l.trim());
+                                        const BADGE = /^(empresa\s+)?(verificad[ao]s?|confidencial)$/i;
+                                        const cleanVal = (v) => v.replace(/\s+logo$/i, '').trim();
+                                        const takeAfter = (re) => {
+                                            for (let i = 0; i < rawLines.length; i++) {
+                                                const m = rawLines[i].match(re);
+                                                if (!m) continue;
+                                                let val = (m[1] || '').trim();
+                                                if (!val || BADGE.test(val)) {
+                                                    val = '';
+                                                    for (let k = i + 1; k < rawLines.length; k++) {
+                                                        if (rawLines[k] && !BADGE.test(rawLines[k])) { val = rawLines[k]; break; }
                                                     }
                                                 }
-                                                if (val && val.length <= 80) {
-                                                    domCompany = val;
-                                                    break;
+                                                val = cleanVal(val);
+                                                if (val && !BADGE.test(val) && val.length >= 2 && val.length <= 80) return val;
+                                            }
+                                            return '';
+                                        };
+                                        const labelCompany = takeAfter(/^acerca de\s+(.+)$/i) || takeAfter(/^empresa\b\s*:?\s*(.*)$/i);
+                                        if (labelCompany) domCompany = labelCompany;
+                                    }
+
+                                    if (!verified && /(^|\.)computrabajo\./i.test(window.location.hostname)) {
+                                        const bd = getVisibleElement('.box_detail') || document.querySelector('.box_detail');
+                                        if (bd) {
+                                            const bdLines = bd.innerText.split('\n').map((l) => l.trim()).filter(Boolean);
+                                            if (bdLines.length) {
+                                                domTitle = bdLines[0];
+                                                text = bd.innerText.substring(0, 6000);
+                                                const strip = (s) => (s || '').toLowerCase().replace(/\s+/g, ' ').replace(/\b(vista|postulado|nuevo|destacado)\b/g, '').trim();
+                                                const key = strip(domTitle);
+                                                if (key) {
+                                                    const links = document.querySelectorAll('a[href*="/ofertas-de-trabajo/"], a[href*="oferta-de-"]');
+                                                    for (const a of links) {
+                                                        const t = strip(a.innerText);
+                                                        if (t && (t === key || t.indexOf(key) === 0 || key.indexOf(t) === 0)) {
+                                                            let href = a.getAttribute('href');
+                                                            if (href) {
+                                                                if (href.charAt(0) === '/') href = window.location.origin + href;
+                                                                url = href.split('?')[0];
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
                                                 }
+                                                if (domCompany) verified = true;
                                             }
                                         }
                                     }
