@@ -21,7 +21,7 @@ Antes de instalar la extensión, creá tu copia de la planilla:
 La extensión se instala en modo desarrollador (no está en la Chrome Web Store porque es una herramienta personal y 100% auditable).
 
 1. **Descargá el código:**
-   - Con Git: `git clone https://github.com/tu-usuario/job-log.git`
+   - Con Git: `git clone https://github.com/eduardocabral8/job-log.git`
    - Sin Git: hacé clic en **Code → Download ZIP** y extraé la carpeta donde quieras.
 
 2. **Cargala en tu navegador:**
