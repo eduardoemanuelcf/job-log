@@ -283,12 +283,12 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
                     }
                     if (exactProgresoTitle) {
                         const updateGoalBody = {
-                            range: `'${exactProgresoTitle}'!E2`,
+                            range: `'${exactProgresoTitle}'!I2`,
                             majorDimension: 'ROWS',
                             values: [[parseInt(cvGoal, 10)]]
                         };
                         await fetch(
-                            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!E2`)}?valueInputOption=USER_ENTERED`,
+                            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!I2`)}?valueInputOption=USER_ENTERED`,
                             {
                                 method: 'PUT',
                                 headers: {
