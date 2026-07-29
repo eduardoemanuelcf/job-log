@@ -135,6 +135,39 @@ const extractAndCacheToken = async (redirectUrl) => {
 
 const CONFIG_KEYS = ['gemini_api_key', 'spreadsheet_id', 'cv_goal', 'current_week'];
 
+let isLoggedIn = false;
+
+const updateAuthBanner = (loggedIn) => {
+    isLoggedIn = loggedIn;
+    const banner = document.getElementById('authBanner');
+    const icon = document.getElementById('authBannerIcon');
+    const text = document.getElementById('authBannerText');
+    const action = document.getElementById('authBannerAction');
+    if (!banner) return;
+
+    if (loggedIn) {
+        banner.className = 'auth-banner';
+        action.style.display = 'none';
+    } else {
+        banner.className = 'auth-banner logged-out';
+        icon.textContent = '⚠';
+        text.textContent = 'No hay sesión de Google';
+        action.textContent = 'Iniciar sesión';
+        action.style.display = '';
+        action.onclick = async () => {
+            try {
+                action.textContent = 'Conectando...';
+                action.disabled = true;
+                await getGoogleAccessToken();
+                updateAuthBanner(true);
+            } catch (e) {
+                action.textContent = 'Reintentar';
+                action.disabled = false;
+            }
+        };
+    }
+};
+
 const loadConfig = async () => {
     const synced = await new Promise((resolve) => {
         chrome.storage.sync.get(CONFIG_KEYS, (r) => resolve(r || {}));
@@ -283,13 +316,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? await getGoogleAccessTokenSilently()
                 : await getGoogleAccessToken();
             if (token) {
+                updateAuthBanner(true);
                 const ok = await loadWeeksFromSheets(spreadsheetId, token, credentials.current_week);
                 if (ok) {
                     btnPostular.disabled = false;
                 }
+            } else {
+                updateAuthBanner(false);
             }
         } catch (e) {
             console.log('[Job Log] No se pudieron actualizar las semanas.');
+            updateAuthBanner(false);
             if (!hasCache) {
                 document.getElementById('semanaSelect').innerHTML = '<option value="" disabled selected>No se pudieron cargar las semanas</option>';
             }
@@ -310,6 +347,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         btnPostular.disabled = true;
         status.className = 'status-text loading';
+
+        // Obtain Google token FIRST, before slow scraping/Gemini steps.
+        // This way the login prompt appears immediately and the popup
+        // won't be closed by the user mid-flow losing all progress.
+        let earlyToken = null;
+        try {
+            status.innerHTML = '<span class="spinner"></span> Verificando sesión de Google...';
+            earlyToken = await withTimeout(
+                getGoogleAccessToken(),
+                90000,
+                'Tiempo de espera agotado en la autenticación de Google.'
+            );
+            updateAuthBanner(true);
+        } catch (authErr) {
+            updateAuthBanner(false);
+            status.className = 'status-text error';
+            status.textContent = authErr.message;
+            btnPostular.disabled = false;
+            return;
+        }
+
         status.innerHTML = '<span class="spinner"></span> Leyendo pagina...';
 
         try {
@@ -773,13 +831,25 @@ ${text}`;
                 throw new Error('No se pudieron determinar los datos de la oferta.');
             }
 
-            status.innerHTML = '<span class="spinner"></span> Solicitando permisos de Google...';
-
-            const token = await withTimeout(
-                getGoogleAccessToken(),
-                90000,
-                'Tiempo de espera agotado en la autenticación de Google.'
-            );
+            // Reuse the token obtained at the start, or refresh if needed
+            let token = earlyToken;
+            try {
+                // Check if the early token is still valid (it might have expired during Gemini processing)
+                const testResp = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=spreadsheetId`,
+                    { headers: { 'Authorization': `Bearer ${token}` } }
+                );
+                if (testResp.status === 401) {
+                    status.innerHTML = '<span class="spinner"></span> Renovando sesión de Google...';
+                    token = await withTimeout(
+                        getGoogleAccessToken(),
+                        90000,
+                        'Tiempo de espera agotado en la autenticación de Google.'
+                    );
+                }
+            } catch (_) {
+                // If the test fetch fails for network reasons, proceed with the early token
+            }
 
             status.innerHTML = '<span class="spinner"></span> Conectando con Google Sheets...';
 

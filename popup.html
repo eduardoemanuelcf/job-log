@@ -345,6 +345,58 @@
       align-items: center;
       background-color: var(--input-bg);
     }
+
+    .auth-banner {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      font-size: var(--fs-caption);
+      font-weight: var(--fw-medium);
+      line-height: var(--lh-normal);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .auth-banner.logged-out {
+      display: flex;
+      background-color: oklch(0.23 0.04 60);
+      border-bottom: 1px solid oklch(0.30 0.05 60);
+      color: oklch(0.78 0.11 60);
+      margin-bottom: 8px;
+    }
+
+    .auth-banner.logged-in {
+      display: flex;
+      background-color: var(--success-bg);
+      border-bottom: 1px solid var(--success-border);
+      color: var(--success-text);
+      margin-bottom: 8px;
+    }
+
+    .auth-banner-icon {
+      flex-shrink: 0;
+      font-size: var(--fs-small);
+    }
+
+    .auth-banner-text {
+      flex: 1;
+    }
+
+    .auth-banner-action {
+      background: none;
+      border: none;
+      color: inherit;
+      font: inherit;
+      font-weight: var(--fw-semibold);
+      text-decoration: underline;
+      cursor: pointer;
+      padding: 0;
+      width: auto;
+    }
+
+    .auth-banner-action:hover {
+      opacity: 0.8;
+    }
   </style>
 </head>
 <body>
@@ -356,6 +408,12 @@
 
     <div class="header">
       <h1>Job Log</h1>
+    </div>
+
+    <div id="authBanner" class="auth-banner">
+      <span class="auth-banner-icon" id="authBannerIcon"></span>
+      <span class="auth-banner-text" id="authBannerText"></span>
+      <button class="auth-banner-action" id="authBannerAction" style="display:none"></button>
     </div>
 
     <div class="body">
