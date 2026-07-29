@@ -536,21 +536,24 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
         weekStatus.textContent = 'Rellenando los datos y formulas de la semana...';
 
         const countifFormula = `=CONTAR.SI('${exactPostulacionesTitle}'!$C:$C; A${rowNumber})`;
-        const goalFormula = `=$E$2`;
+        const goalFormula = `=$I$2`;
         const diffFormula = `=B${rowNumber}-C${rowNumber}`;
         const complianceFormula = `=SI(C${rowNumber}>0; B${rowNumber}/C${rowNumber}; 0)`;
-        const statusFormula = `=SI(B${rowNumber}=0; "— sin postulaciones"; SI(B${rowNumber}>=C${rowNumber}; "Objetivo cumplido"; "Faltan "&(C${rowNumber}-B${rowNumber})&" CVs"))`;
+        const statusFormula = `=SI(B${rowNumber}=0;"— sin postulaciones";SI(B${rowNumber}>=C${rowNumber};"Objetivo cumplido";"Faltan "&(C${rowNumber}-B${rowNumber})&" CVs"))`;
+        const enProcesoFormula = `=CONTAR.SI.CONJUNTO('${exactPostulacionesTitle}'!$C:$C; $A${rowNumber}; '${exactPostulacionesTitle}'!$F:$F; "En proceso")`;
+        const noAvanzaronFormula = `=CONTAR.SI.CONJUNTO('${exactPostulacionesTitle}'!$C:$C; $A${rowNumber}; '${exactPostulacionesTitle}'!$F:$F; "No avanzó")`;
+        const entrevistaFormula = `=CONTAR.SI.CONJUNTO('${exactPostulacionesTitle}'!$C:$C; $A${rowNumber}; '${exactPostulacionesTitle}'!$G:$G; "Si")`;
 
         const updateBody = {
-            range: `'${exactProgresoTitle}'!A${rowNumber}:F${rowNumber}`,
+            range: `'${exactProgresoTitle}'!A${rowNumber}:I${rowNumber}`,
             majorDimension: 'ROWS',
             values: [
-                [newWeekName, countifFormula, goalFormula, diffFormula, complianceFormula, statusFormula]
+                [newWeekName, countifFormula, goalFormula, diffFormula, complianceFormula, statusFormula, enProcesoFormula, noAvanzaronFormula, entrevistaFormula]
             ]
         };
 
         const updatePromise = fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!A${rowNumber}:F${rowNumber}`)}?valueInputOption=USER_ENTERED`,
+            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!A${rowNumber}:I${rowNumber}`)}?valueInputOption=USER_ENTERED`,
             {
                 method: 'PUT',
                 headers: {
@@ -570,6 +573,90 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
         if (!updateResponse.ok) {
             throw new Error('Error al rellenar los datos de la nueva semana.');
         }
+
+        // Apply alternating row color (white for odd weeks, blue for even weeks)
+        // Rows: 5=Semana1(odd), 6=Semana2(even), 7=Semana3(odd), ...
+        const isEvenRow = (rowNumber - 5) % 2 === 1;
+        const rowColor = isEvenRow
+            ? { red: 0.918, green: 0.945, blue: 0.984 }  // #eaf1fb
+            : { red: 1, green: 1, blue: 1 };            // white
+
+        const colorRequest = {
+            requests: [
+                {
+                    repeatCell: {
+                        range: {
+                            sheetId: progresoSheetId,
+                            startRowIndex: rowNumber - 1,
+                            endRowIndex: rowNumber,
+                            startColumnIndex: 1,
+                            endColumnIndex: 9
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: rowColor
+                            }
+                        },
+                        fields: 'userEnteredFormat.backgroundColor'
+                    }
+                }
+            ]
+        };
+
+        await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(colorRequest)
+            }
+        );
+
+        const totalRow = rowNumber + 1;
+        const totalBody = {
+            data: [
+                {
+                    range: `'${exactProgresoTitle}'!B${totalRow}`,
+                    values: [[`=SUMA(B5:B${rowNumber})`]]
+                },
+                {
+                    range: `'${exactProgresoTitle}'!C${totalRow}`,
+                    values: [[`=SUMA(C5:C${rowNumber})`]]
+                },
+                {
+                    range: `'${exactProgresoTitle}'!D${totalRow}`,
+                    values: [[`=SUMA(D5:D${rowNumber})`]]
+                },
+                {
+                    range: `'${exactProgresoTitle}'!G${totalRow}`,
+                    values: [[`=SUMA(G5:G${rowNumber})`]]
+                },
+                {
+                    range: `'${exactProgresoTitle}'!H${totalRow}`,
+                    values: [[`=SUMA(H5:H${rowNumber})`]]
+                },
+                {
+                    range: `'${exactProgresoTitle}'!I${totalRow}`,
+                    values: [[`=SUMA(I5:I${rowNumber})`]]
+                }
+            ],
+            valueInputOption: 'USER_ENTERED'
+        };
+
+        await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(totalBody)
+            }
+        );
 
         weekStatus.className = 'status-msg success';
         weekStatus.textContent = `${newWeekName} agregada con éxito`;
