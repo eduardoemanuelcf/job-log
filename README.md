@@ -1,6 +1,6 @@
 # Job Log — Extensión de Chrome para registrar tus postulaciones
 
-**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge y Opera. Registra automáticamente tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn obtiene los datos de la oferta (título y empresa) directamente desde la API interna de LinkedIn usando tu propia sesión; en otros portales de empleo usa la API de Gemini para extraer la información del texto de la oferta.
+**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge y Opera. Registra automáticamente tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn obtiene los datos de la oferta (título y empresa) directamente desde la API interna de LinkedIn usando tu propia sesión; en otros portales de empleo usa la API de **Gemini** (IA principal) o **Groq** (IA de fallback) para extraer la información del texto de la oferta.
 
 Todo corre en tu navegador. Sin servidores. Sin intermediarios.
 
@@ -38,21 +38,23 @@ La extensión se instala en modo desarrollador (no está en la Chrome Web Store 
 
 ## Paso 2 — Configurar la extensión
 
-### 2.1 — Obtener tu Gemini API Key (gratis)
+### 2.1 — Obtener tus API Keys (gratis)
 
-La extensión necesita una API Key de Gemini para leer los datos de cada oferta:
-
-1. Entrá a [Google AI Studio](https://aistudio.google.com/app/apikey) e iniciá sesión con tu cuenta de Google.
-2. Hacé clic en **"Get API key"** → **"Create API key"** → **"Create API key in new project"**.
-3. Copiá la clave generada. *No la compartas con nadie.*
+- **Gemini API Key (IA Principal):**
+  1. Entrá a [Google AI Studio](https://aistudio.google.com/app/apikey) e iniciá sesión con tu cuenta de Google.
+  2. Hacé clic en **"Get API key"** → **"Create API key"**.
+- **Groq API Key (IA Fallback - Opcional):**
+  1. Entrá a [Groq Console](https://console.groq.com/keys).
+  2. Creá una clave API si querés disponer de respaldo ante caídas o límites de cuota en Gemini.
 
 ![Paso 2.1: Obtener API Key en Google AI Studio](./docs/assets/02-1-get-api-key.png)
 
 ### 2.2 — Cargar tus credenciales
 
 1. Hacé clic en el ícono de la extensión en la barra de herramientas y presioná **Configuración** (o clic derecho → **Opciones**).
-2. Completá los dos campos:
-   - **Gemini API Key:** pegá la clave del paso anterior.
+2. Completá los campos:
+   - **Gemini API Key (IA Principal):** pegá tu clave de Gemini.
+   - **Groq API Key (IA Fallback - Opcional):** pegá tu clave de Groq si la tenés.
    - **URL de Google Sheets:** pegá la URL de tu planilla del Paso 0.
 3. Hacé clic en **Guardar configuración**. La extensión va a validar las credenciales y queda lista.
 
@@ -84,8 +86,8 @@ Sin embargo, el acceso está limitado a nivel de código. Podés revisar el arch
 
 La extensión corre completamente en tu navegador. El flujo de datos es directo:
 
-- **En LinkedIn:** el título y la empresa se obtienen de la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión ya iniciada, y se guardan directamente en tu Google Sheets. Para estas ofertas no interviene Gemini.
-- **En otros portales:** el texto de la oferta se envía a la API de Gemini para estructurar los datos, que luego se guardan en tu Google Sheets.
+- **En LinkedIn:** el título y la empresa se obtienen de la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión ya iniciada, y se guardan directamente en tu Google Sheets. Para estas ofertas no interviene la IA.
+- **En otros portales:** el texto de la oferta se envía a la API de Gemini (o Groq como fallback) para estructurar los datos, que luego se guardan en tu Google Sheets.
 
 Ningún dato personal ni credencial pasa por un servidor externo.
 
@@ -93,5 +95,5 @@ Ningún dato personal ni credencial pasa por un servidor externo.
 
 Podés auditar todo el código en los archivos principales:
 - [`manifest.json`](./manifest.json) — permisos requeridos: `activeTab`, `storage`, `identity` y `scripting`.
-- [`popup.js`](./popup.js) — lógica de extracción con Gemini y guardado en Sheets.
+- [`popup.js`](./popup.js) — lógica de extracción con Gemini/Groq y guardado en Sheets.
 - [`options.js`](./options.js) — guardado local de credenciales en tu navegador.

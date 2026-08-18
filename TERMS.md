@@ -8,7 +8,7 @@ Al utilizar la extensión Job Log, aceptas las siguientes condiciones de uso.
 Job Log es una herramienta de código abierto provista de forma gratuita para facilitar el registro personal de búsquedas de empleo. Te comprometes a utilizarla de manera ética y conforme a los términos de servicio de las plataformas con las que interactúa (como LinkedIn y Google).
 
 ## 2. Responsabilidad del Usuario
-* **Claves de API y Hojas de Cálculo:** Eres responsable de obtener de forma individual tu Gemini API Key y mantener la privacidad de la misma.
+* **Claves de API y Hojas de Cálculo:** Eres responsable de obtener de forma individual tus claves de API (Gemini y/o Groq) y mantener la privacidad de las mismas.
 * **Control de Cuentas:** El acceso otorgado mediante Google OAuth para escribir en tu hoja de cálculo es gestionado localmente en tu navegador. Eres el único responsable del uso y cuidado del acceso a tu Google Drive.
 
 ## 3. Exclusión de Garantías y Responsabilidad

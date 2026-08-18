@@ -156,27 +156,16 @@ const extractAndCacheToken = async (redirectUrl) => {
     }
 };
 
-const CONFIG_KEYS = ['gemini_api_key', 'spreadsheet_id', 'cv_goal', 'current_week'];
+const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'spreadsheet_id', 'cv_goal', 'current_week'];
 
 const loadConfig = async () => {
     const synced = await new Promise((resolve) => {
         chrome.storage.sync.get(CONFIG_KEYS, (r) => resolve(r || {}));
     });
-    if (synced.gemini_api_key || synced.spreadsheet_id) {
-        return synced;
-    }
     const local = await new Promise((resolve) => {
         chrome.storage.local.get(CONFIG_KEYS, (r) => resolve(r || {}));
     });
-    if (local.gemini_api_key || local.spreadsheet_id) {
-        const toSync = {};
-        CONFIG_KEYS.forEach((k) => {
-            if (local[k] !== undefined) toSync[k] = local[k];
-        });
-        chrome.storage.sync.set(toSync);
-        return local;
-    }
-    return synced;
+    return { ...local, ...synced };
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -185,6 +174,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (data.gemini_api_key) {
             document.getElementById('geminiApiKey').value = data.gemini_api_key;
+        }
+        if (data.groq_api_key) {
+            document.getElementById('groqApiKey').value = data.groq_api_key;
         }
         if (data.spreadsheet_id) {
             document.getElementById('spreadsheetId').value = data.spreadsheet_id;
@@ -207,17 +199,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 const eyeOffSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 5c7 0 10 7 10 7a19.5 19.5 0 0 1-5.07 5.94M1 1l22 22"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const eyeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
-document.getElementById('toggleApiKey').addEventListener('click', () => {
-    const input = document.getElementById('geminiApiKey');
-    const button = document.getElementById('toggleApiKey');
-    if (input.type === 'password') {
-        input.type = 'text';
-        button.innerHTML = eyeSvg;
-    } else {
-        input.type = 'password';
-        button.innerHTML = eyeOffSvg;
-    }
-});
+const setupTogglePassword = (inputId, buttonId) => {
+    const input = document.getElementById(inputId);
+    const button = document.getElementById(buttonId);
+    if (!input || !button) return;
+    button.addEventListener('click', () => {
+        if (input.type === 'password') {
+            input.type = 'text';
+            button.innerHTML = eyeSvg;
+        } else {
+            input.type = 'password';
+            button.innerHTML = eyeOffSvg;
+        }
+    });
+};
+
+setupTogglePassword('geminiApiKey', 'toggleApiKey');
+setupTogglePassword('groqApiKey', 'toggleGroqApiKey');
 
 document.getElementById('btnMinus').addEventListener('click', () => {
     const input = document.getElementById('cvGoal');
@@ -240,9 +238,16 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
 
     const btnSave = document.getElementById('btnSave');
     const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
+    const groqApiKey = document.getElementById('groqApiKey').value.trim();
     const spreadsheetIdInput = document.getElementById('spreadsheetId').value.trim();
     const cvGoal = document.getElementById('cvGoal').value.trim() || '25';
     const status = document.getElementById('status');
+
+    if (!geminiApiKey && !groqApiKey) {
+        status.className = 'status-msg error';
+        status.textContent = 'Debes ingresar al menos una API Key (Gemini o Groq)';
+        return;
+    }
 
     const match = spreadsheetIdInput.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     const spreadsheetId = match ? match[1].trim() : spreadsheetIdInput.trim();
@@ -254,6 +259,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
         await new Promise((resolve, reject) => {
             chrome.storage.sync.set({
                 gemini_api_key: geminiApiKey,
+                groq_api_key: groqApiKey,
                 spreadsheet_id: spreadsheetId,
                 cv_goal: cvGoal
             }, () => {
