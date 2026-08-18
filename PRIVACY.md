@@ -10,14 +10,14 @@ Job Log es una herramienta que funciona en su totalidad de forma local en tu nav
 * **Sin servidores intermediarios:** La extensión no utiliza servidores propios ni bases de datos externas para procesar tus datos.
 
 ## 2. Uso y Almacenamiento de Credenciales
-Para funcionar, la extensión requiere que ingreses dos datos en la configuración: una **Gemini API Key** y la **URL de tu Google Sheets**.
-* **Almacenamiento Local:** Estos datos se guardan exclusivamente en el almacenamiento local y seguro de tu propio navegador (`chrome.storage.local`).
-* **Acceso Privado:** Tus credenciales nunca son enviadas a nosotros ni a terceros. Su único propósito es autenticar tus peticiones locales directamente ante las APIs oficiales de Google Gemini y Google Sheets.
+Para funcionar, la extensión requiere que ingreses en la configuración: tu **Gemini API Key** (y opcionalmente tu **Groq API Key** como fallback) y la **URL de tu Google Sheets**.
+* **Almacenamiento Local:** Estos datos se guardan exclusivamente en el almacenamiento local y seguro de tu propio navegador (`chrome.storage.local` / `chrome.storage.sync`).
+* **Acceso Privado:** Tus credenciales nunca son enviadas a nosotros ni a terceros. Su único propósito es autenticar tus peticiones locales directamente ante las APIs oficiales de Google Gemini, Groq y Google Sheets.
 
 ## 3. Transferencia de Datos
 El flujo de información es directo y encriptado entre tu navegador y los servicios involucrados:
-* En LinkedIn, el título y la empresa de la oferta se leen directamente desde la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión activa en el navegador. Para estas ofertas no se utiliza Gemini.
-* En otros portales de empleo, el texto de la oferta se envía temporalmente a la API oficial de Google Gemini (`https://generativelanguage.googleapis.com`) para estructurar los datos del empleo.
+* En LinkedIn, el título y la empresa de la oferta se leen directamente desde la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión activa en el navegador. Para estas ofertas no se utiliza la IA.
+* En otros portales de empleo, el texto de la oferta se envía temporalmente a la API oficial de Google Gemini (`https://generativelanguage.googleapis.com`) como IA principal, o a Groq (`https://api.groq.com`) como fallback si Gemini no responde o supera su cuota, para estructurar los datos del empleo.
 * Los datos estructurados se envían directamente a tu cuenta de Google Sheets a través de la API oficial de Google Sheets (`https://sheets.googleapis.com`).
 
 ## 4. Cambios en esta Política
