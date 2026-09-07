@@ -74,76 +74,52 @@ const getGoogleAccessToken = async () => {
     }
 };
 
+const loginHintParam = async () => {
+    const stored = await new Promise((resolve) => {
+        chrome.storage.local.get(['google_account_email'], (result) => resolve(result || {}));
+    });
+    return stored.google_account_email
+        ? `&login_hint=${encodeURIComponent(stored.google_account_email)}`
+        : '';
+};
+
 const getAccessTokenViaWebFlow = async (interactive, forceSelectAccount = false) => {
     const manifest = chrome.runtime.getManifest();
     const clientId = manifest.oauth2.client_id;
-    const scopes = manifest.oauth2.scopes.join(' ');
+    const scopes = [...manifest.oauth2.scopes, 'email'].join(' ');
     const redirectUri = chrome.identity.getRedirectURL();
 
-    let authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=token&` +
         `scope=${encodeURIComponent(scopes)}`;
 
-    if (forceSelectAccount) {
-        authUrl += `&prompt=select_account`;
-        return new Promise((resolve, reject) => {
-            chrome.identity.launchWebAuthFlow({
-                url: authUrl,
-                interactive: true
-            }, (redirectUrl) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (!redirectUrl) {
-                    reject(new Error('No se recibio la URL de redireccion.'));
-                    return;
-                }
-                resolve(extractAndCacheToken(redirectUrl));
-            });
+    const launch = (url, isInteractive) => new Promise((resolve, reject) => {
+        chrome.identity.launchWebAuthFlow({ url, interactive: isInteractive }, (redirectUrl) => {
+            if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+                return;
+            }
+            if (!redirectUrl) {
+                reject(new Error('No se recibio la URL de redireccion.'));
+                return;
+            }
+            resolve(extractAndCacheToken(redirectUrl));
         });
+    });
+
+    if (forceSelectAccount) {
+        return launch(`${authUrl}&prompt=select_account`, true);
     }
 
     try {
-        const silentToken = await new Promise((resolve, reject) => {
-            chrome.identity.launchWebAuthFlow({
-                url: authUrl,
-                interactive: false
-            }, (redirectUrl) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (!redirectUrl) {
-                    reject(new Error('Sin URL de redireccion.'));
-                    return;
-                }
-                resolve(extractAndCacheToken(redirectUrl));
-            });
-        });
-        return silentToken;
+        return await launch(`${authUrl}&prompt=none${await loginHintParam()}`, false);
     } catch (e) {
         if (!interactive) {
             throw e;
         }
-        return new Promise((resolve, reject) => {
-            chrome.identity.launchWebAuthFlow({
-                url: authUrl,
-                interactive: true
-            }, (redirectUrl) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
-                if (!redirectUrl) {
-                    reject(new Error('No se recibio la URL de redireccion.'));
-                    return;
-                }
-                resolve(extractAndCacheToken(redirectUrl));
-            });
-        });
+        return launch(authUrl, true);
     }
 };
 
@@ -162,6 +138,10 @@ const extractAndCacheToken = async (redirectUrl) => {
                 }, res);
             });
             chrome.storage.local.remove(['user_disconnected']);
+            const email = await fetchGoogleEmail(accessToken);
+            if (email) {
+                chrome.storage.local.set({ google_account_email: email });
+            }
             return accessToken;
         } else {
             throw new Error('No se pudo extraer el token.');
@@ -201,7 +181,7 @@ const checkGoogleAuthStatus = async () => {
         return { isConnected: false };
     }
 
-    if (storage.google_access_token && storage.google_token_expires_at && storage.google_token_expires_at > Date.now()) {
+    if (storage.google_access_token && storage.google_token_expires_at && storage.google_token_expires_at > Date.now() + 120000) {
         return {
             isConnected: true,
             token: storage.google_access_token,
@@ -211,7 +191,12 @@ const checkGoogleAuthStatus = async () => {
 
     const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave();
     if (isBrave) {
-        return { isConnected: false };
+        try {
+            const token = await getAccessTokenViaWebFlow(false);
+            return { isConnected: true, token, email: storage.google_account_email || '' };
+        } catch (_) {
+            return { isConnected: false };
+        }
     }
 
     try {
