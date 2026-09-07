@@ -1,0 +1,20 @@
+#!/bin/sh
+# Bloquea el push si cambió código pero no la "version" de manifest.json.
+# La extensión se instala descomprimida: sin bump, nadie ve el aviso de update.
+# Saltear a propósito: git push --no-verify
+old=$(git show origin/main:manifest.json 2>/dev/null | grep -o '"version"[^,]*' | cut -d'"' -f4)
+new=$(grep -o '"version"[^,]*' manifest.json | cut -d'"' -f4)
+[ -z "$old" ] && exit 0   # primer push o sin origin/main: no molestamos
+
+nv=$(grep -o '"version"[^,]*' notice.json | cut -d'"' -f4)
+if [ "$nv" != "$new" ]; then
+    echo "❌ notice.json dice $nv y manifest.json dice $new. Tienen que coincidir."
+    exit 1
+fi
+
+if [ "$old" = "$new" ] &&
+   git diff --name-only origin/main..HEAD | grep -qvE '^(README|PRIVACY|TERMS|CLAUDE)\.md$|^docs/|^hooks/|^notice\.json$'; then
+    echo "❌ Cambió código pero manifest.json sigue en $new."
+    echo "   Bumpeá \"version\" (o 'git push --no-verify' si de verdad no hace falta)."
+    exit 1
+fi

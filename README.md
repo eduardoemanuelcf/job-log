@@ -21,7 +21,7 @@ Antes de instalar la extensión, creá tu copia de la planilla:
 La extensión se instala en modo desarrollador (no está en la Chrome Web Store porque es una herramienta personal y 100% auditable).
 
 1. **Descargá el código:**
-   - Con Git: `git clone https://github.com/eduardocabral8/job-log.git`
+   - Con Git: `git clone https://github.com/eduardoemanuelcf/job-log.git`
    - Sin Git: hacé clic en **Code → Download ZIP** y extraé la carpeta donde quieras.
 
 2. **Cargala en tu navegador:**
@@ -71,6 +71,21 @@ La extensión se instala en modo desarrollador (no está en la Chrome Web Store 
 5. La fila se agrega instantáneamente a tu planilla.
 
 ![Paso 3: Extensión en acción](./docs/assets/03-usage-demo.png)
+
+---
+
+## Actualizar
+
+Si la clonaste con git:
+1. `git pull` en la carpeta de la extensión
+2. Ir a `chrome://extensions/` y tocar el botón ↻ de Job Log
+
+Si la bajaste como ZIP:
+1. Bajar el ZIP de nuevo y reemplazar la carpeta (Code → Download ZIP)
+2. Ir a `chrome://extensions/` y tocar el botón ↻ de Job Log
+
+Tu configuración (API keys, planilla) no se pierde: vive en chrome.storage,
+no en la carpeta.
 
 ---
 

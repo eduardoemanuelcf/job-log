@@ -42,6 +42,13 @@ const getGoogleAccessToken = async () => {
                 }
             });
         });
+        if (token) {
+            chrome.storage.local.set({
+                google_access_token: token,
+                google_token_expires_at: Date.now() + 3500 * 1000
+            });
+            chrome.storage.local.remove(['user_disconnected']);
+        }
         return token;
     } catch (err) {
         return getAccessTokenViaWebFlow(true);
@@ -50,10 +57,14 @@ const getGoogleAccessToken = async () => {
 
 const getGoogleAccessTokenSilently = async () => {
     const cached = await new Promise((resolve) => {
-        chrome.storage.local.get(['google_access_token', 'google_token_expires_at'], (result) => {
+        chrome.storage.local.get(['google_access_token', 'google_token_expires_at', 'user_disconnected'], (result) => {
             resolve(result || {});
         });
     });
+
+    if (cached.user_disconnected) {
+        throw new Error('No hay sesión de Google');
+    }
 
     if (cached.google_access_token && cached.google_token_expires_at && cached.google_token_expires_at > Date.now() + 120000) {
         return cached.google_access_token;
@@ -67,30 +78,57 @@ const getGoogleAccessTokenSilently = async () => {
     try {
         const token = await new Promise((resolve, reject) => {
             chrome.identity.getAuthToken({ interactive: false }, (t) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
+                if (chrome.runtime.lastError || !t) {
+                    reject(chrome.runtime.lastError || new Error('Sin token'));
                 } else {
                     resolve(t);
                 }
             });
         });
+        if (token) {
+            chrome.storage.local.set({
+                google_access_token: token,
+                google_token_expires_at: Date.now() + 3500 * 1000
+            });
+            chrome.storage.local.remove(['user_disconnected']);
+        }
         return token;
     } catch (err) {
         return getAccessTokenViaWebFlow(false);
     }
 };
 
-const getAccessTokenViaWebFlow = async (interactive) => {
+const getAccessTokenViaWebFlow = async (interactive, forceSelectAccount = false) => {
     const manifest = chrome.runtime.getManifest();
     const clientId = manifest.oauth2.client_id;
     const scopes = manifest.oauth2.scopes.join(' ');
     const redirectUri = chrome.identity.getRedirectURL();
 
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    let authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=token&` +
         `scope=${encodeURIComponent(scopes)}`;
+
+    if (forceSelectAccount) {
+        authUrl += `&prompt=select_account`;
+        return new Promise((resolve, reject) => {
+            chrome.identity.launchWebAuthFlow({
+                url: authUrl,
+                interactive: true
+            }, (redirectUrl) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (!redirectUrl) {
+                    reject(new Error('No se recibio la URL de redireccion.'));
+                    return;
+                }
+                resolve(extractAndCacheToken(redirectUrl));
+            });
+        });
+    }
 
     return new Promise((resolve, reject) => {
         chrome.identity.launchWebAuthFlow({
@@ -124,6 +162,7 @@ const extractAndCacheToken = async (redirectUrl) => {
                     google_token_expires_at: expiresAt
                 }, res);
             });
+            chrome.storage.local.remove(['user_disconnected']);
             return accessToken;
         } else {
             throw new Error('No se pudo extraer el token de acceso.');
@@ -133,11 +172,43 @@ const extractAndCacheToken = async (redirectUrl) => {
     }
 };
 
+// ponytail: un helper, tres call sites — el status suelto no alcanza para diagnosticar
+const sheetsError = async (response, contexto) => {
+    const body = await response.json().catch(() => null);
+    const detalle = body?.error?.message || '';
+    const codigo = body?.error?.status || '';
+    return new Error(`${contexto} (${response.status}${codigo ? ' ' + codigo : ''}): ${detalle}`);
+};
+
+const forceNewGoogleToken = async (viejo) => {
+    await new Promise(r => chrome.storage.local.remove(['google_access_token', 'google_token_expires_at'], r));
+    if (viejo) {
+        await new Promise(r => {
+            try {
+                chrome.identity.removeCachedAuthToken({ token: viejo }, () => r());
+            } catch (_) {
+                r();
+            }
+        });
+    }
+    await new Promise(r => {
+        try {
+            chrome.identity.clearAllCachedAuthTokens(() => r());
+        } catch (_) {
+            r();
+        }
+    });
+    return getGoogleAccessToken();
+};
+
 const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'spreadsheet_id', 'cv_goal', 'current_week'];
 
 let isLoggedIn = false;
 
-const updateAuthBanner = (loggedIn) => {
+let currentOnLoginSuccess = null;
+
+const updateAuthBanner = (loggedIn, onLoginSuccess = null) => {
+    if (onLoginSuccess) currentOnLoginSuccess = onLoginSuccess;
     isLoggedIn = loggedIn;
     const banner = document.getElementById('authBanner');
     const icon = document.getElementById('authBannerIcon');
@@ -158,14 +229,63 @@ const updateAuthBanner = (loggedIn) => {
             try {
                 action.textContent = 'Conectando...';
                 action.disabled = true;
-                await getGoogleAccessToken();
-                updateAuthBanner(true);
+                const token = await getGoogleAccessToken();
+                if (token) {
+                    updateAuthBanner(true);
+                    if (typeof currentOnLoginSuccess === 'function') {
+                        await currentOnLoginSuccess(token);
+                    }
+                }
             } catch (e) {
                 action.textContent = 'Reintentar';
                 action.disabled = false;
             }
         };
     }
+};
+
+// ponytail: chequea en cada apertura del popup, sin caché propia.
+// raw.githubusercontent ya cachea ~5min en su CDN. Si molesta, guardar
+// un timestamp en chrome.storage.local y chequear cada 6h.
+const NOTICE_URL = 'https://raw.githubusercontent.com/eduardoemanuelcf/job-log/main/notice.json';
+const UPDATE_HELP_URL = 'https://github.com/eduardoemanuelcf/job-log#actualizar';
+
+const isNewer = (remote, local) => {
+    const a = String(remote).split('.').map(Number);
+    const b = String(local).split('.').map(Number);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        const x = a[i] || 0, y = b[i] || 0;
+        if (x !== y) return x > y;
+    }
+    return false;
+};
+
+const checkForUpdate = async () => {
+    try {
+        const res = await withTimeout(fetch(NOTICE_URL), 5000, 'timeout');
+        const aviso = await res.json();
+        const local = chrome.runtime.getManifest().version;
+        const hayUpdate = isNewer(aviso.version, local);
+        const { dismissed_notice } = await chrome.storage.local.get('dismissed_notice');
+
+        // ponytail: un update no se puede descartar, tiene que seguir molestando.
+        // Solo los mensajes sueltos se descartan.
+        if (!hayUpdate && (!aviso.mensaje || aviso.id === dismissed_notice)) return;
+
+        document.getElementById('updateBannerText').textContent = hayUpdate
+            ? `Versión nueva disponible: ${aviso.version} (tenés ${local}). ${aviso.mensaje || ''}`.trim()
+            : aviso.mensaje;
+        document.getElementById('updateBannerAction').onclick =
+            () => chrome.tabs.create({ url: aviso.link || UPDATE_HELP_URL });
+
+        const dismiss = document.getElementById('updateBannerDismiss');
+        dismiss.style.display = hayUpdate ? 'none' : '';
+        dismiss.onclick = () => {
+            chrome.storage.local.set({ dismissed_notice: aviso.id });
+            document.getElementById('updateBanner').className = 'auth-banner';
+        };
+        document.getElementById('updateBanner').className = 'auth-banner logged-out';
+    } catch { /* sin red o GitHub caído: no molestamos */ }
 };
 
 const loadConfig = async () => {
@@ -256,6 +376,7 @@ const loadWeeksFromSheets = async (spreadsheetId, token, selected) => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+    checkForUpdate();   // fire-and-forget, no bloquea el render del popup
     const normalArea = document.getElementById('normalArea');
     const configRequiredArea = document.getElementById('configRequiredArea');
     const btnConfigurar = document.getElementById('btnConfigurar');
@@ -300,24 +421,45 @@ document.addEventListener('DOMContentLoaded', async () => {
             btnPostular.disabled = false;
         }
 
-        try {
-            const token = hasCache
-                ? await getGoogleAccessTokenSilently()
-                : await getGoogleAccessToken();
-            if (token) {
-                updateAuthBanner(true);
-                const ok = await loadWeeksFromSheets(spreadsheetId, token, credentials.current_week);
+        const authStatus = await new Promise((resolve) => {
+            chrome.storage.local.get(['user_disconnected'], (result) => resolve(result || {}));
+        });
+
+        const onLoginSuccess = async (newToken) => {
+            if (spreadsheetId) {
+                const ok = await loadWeeksFromSheets(spreadsheetId, newToken, credentials.current_week);
                 if (ok) {
                     btnPostular.disabled = false;
                 }
-            } else {
-                updateAuthBanner(false);
             }
-        } catch (e) {
-            console.log('[Job Log] No se pudieron actualizar las semanas.');
-            updateAuthBanner(false);
+        };
+
+        if (authStatus.user_disconnected) {
+            updateAuthBanner(false, onLoginSuccess);
             if (!hasCache) {
-                document.getElementById('semanaSelect').innerHTML = '<option value="" disabled selected>No se pudieron cargar las semanas</option>';
+                btnPostular.disabled = true;
+                document.getElementById('semanaSelect').innerHTML = '<option value="" disabled selected>Inicia sesión para cargar semanas</option>';
+            }
+        } else {
+            try {
+                const token = hasCache
+                    ? await getGoogleAccessTokenSilently()
+                    : await getGoogleAccessToken();
+                if (token) {
+                    updateAuthBanner(true, onLoginSuccess);
+                    const ok = await loadWeeksFromSheets(spreadsheetId, token, credentials.current_week);
+                    if (ok) {
+                        btnPostular.disabled = false;
+                    }
+                } else {
+                    updateAuthBanner(false, onLoginSuccess);
+                }
+            } catch (e) {
+                console.log('[Job Log] No se pudieron actualizar las semanas.');
+                updateAuthBanner(false, onLoginSuccess);
+                if (!hasCache) {
+                    document.getElementById('semanaSelect').innerHTML = '<option value="" disabled selected>No se pudieron cargar las semanas</option>';
+                }
             }
         }
 
@@ -629,6 +771,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         text = `${domTitle} ${domCompany}`.trim();
                                     }
 
+                                    // ponytail: páginas de formulario de postulación no tienen datos de la oferta
+                                    if (/smartapply\.indeed\.com|\/indeedapply\/|\/jobs\/application/.test(window.location.href)) {
+                                        return { error: 'Esta es la página del formulario de postulación. Volvé a la oferta y registrala desde ahí.' };
+                                    }
+
                                     if (!domTitle && !domCompany && !text) {
                                         return {
                                             error: 'No se pudieron leer los datos de la oferta. Recargá la página (F5) y registrala de nuevo.'
@@ -657,7 +804,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             );
 
             if (results.error) {
-                throw new Error(`Error en el contenido de la página: ${results.error}`);
+                throw new Error(results.error);
             }
 
             const { url, text, domTitle, domCompany } = results;
@@ -672,6 +819,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
 
             let aiExtracted = false;
+            let lastGeminiError = '';
+            let lastGroqError = '';
 
             // 1. Intentar con Gemini primero (si hay clave configurada)
             if (credentials.gemini_api_key) {
@@ -711,13 +860,14 @@ ${text}`;
                     }
                 };
 
-                const GEMINI_MODELS = [
-                    'gemini-3.5-flash-lite',
-                    'gemini-3.6-flash',
-                    'gemini-2.5-flash-lite',
-                    'gemini-2.5-flash',
-                    'gemini-2.0-flash'
-                ];
+                const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+
+                // ponytail: thinking mínimo — extraer 2 campos no necesita razonamiento y evita latencia innecesaria.
+                const thinkingCfg = (model) => ({
+                    thinkingConfig: model.startsWith('gemini-3')
+                        ? { thinkingLevel: 'minimal' }        // Gemini 3: 'minimal' responde casi instantáneamente
+                        : { thinkingBudget: 0 }               // Gemini 2.5: 0 = apagado
+                });
 
                 for (let i = 0; i < GEMINI_MODELS.length; i++) {
                     const model = GEMINI_MODELS[i];
@@ -733,20 +883,31 @@ ${text}`;
                                 {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(geminiBody)
+                                    body: JSON.stringify({
+                                        ...geminiBody,
+                                        generationConfig: {
+                                            ...geminiBody.generationConfig,
+                                            ...thinkingCfg(model)
+                                        }
+                                    })
                                 }
                             ),
-                            20000,
+                            12000,
                             'Tiempo de espera agotado al conectar con Gemini'
                         );
                     } catch (e) {
+                        lastGeminiError = `Gemini (${model}): ${e.message}`;
                         console.warn(`[Job Log] Error de conexión con Gemini (${model}):`, e);
                         continue;
                     }
 
                     if (!response.ok) {
                         const errText = await response.text().catch(() => '');
-                        console.warn(`[Job Log] Error HTTP ${response.status} en Gemini (${model}):`, errText);
+                        let msg = errText;
+                        try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
+                        lastGeminiError = `Gemini ${response.status}: ${String(msg).slice(0, 200)}`;
+                        console.warn(`[Job Log] ${lastGeminiError}`);
+                        if ([400, 401, 403, 429].includes(response.status)) break;  // la key/cuota no mejora con otro modelo
                         continue;
                     }
 
@@ -754,17 +915,22 @@ ${text}`;
                     try {
                         data = await response.json();
                     } catch (_) {
+                        lastGeminiError = `Gemini (${model}): error al leer respuesta`;
                         continue;
                     }
 
-                    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts || !data.candidates[0].content.parts[0]) {
+                    const parts = data?.candidates?.[0]?.content?.parts || [];
+                    const jsonPart = parts.find(p => p.text && !p.thought);
+                    if (!jsonPart) {
+                        lastGeminiError = `Gemini (${model}): respuesta sin contenido`;
                         continue;
                     }
 
                     let parsedData;
                     try {
-                        parsedData = JSON.parse(data.candidates[0].content.parts[0].text);
+                        parsedData = JSON.parse(jsonPart.text);
                     } catch (_) {
+                        lastGeminiError = `Gemini (${model}): error al parsear JSON`;
                         continue;
                     }
 
@@ -773,6 +939,8 @@ ${text}`;
                         title = parsedData.title;
                         aiExtracted = true;
                         break;
+                    } else {
+                        lastGeminiError = `Gemini (${model}): datos incompletos en la respuesta`;
                     }
                 }
             }
@@ -797,11 +965,8 @@ Texto a analizar:
 ${text}`;
 
                 const GROQ_MODELS = [
-                    'openai/gpt-oss-120b',
                     'openai/gpt-oss-20b',
-                    'qwen/qwen3.6-27b',
-                    'llama-3.3-70b-versatile',
-                    'llama-3.1-8b-instant'
+                    'llama-3.3-70b-versatile'
                 ];
 
                 const groqBody = {
@@ -836,13 +1001,18 @@ ${text}`;
                             'Tiempo de espera agotado al conectar con Groq'
                         );
                     } catch (e) {
+                        lastGroqError = `Groq (${model}): ${e.message}`;
                         console.warn(`[Job Log] Error de conexión con Groq (${model}):`, e);
                         continue;
                     }
 
                     if (!response.ok) {
                         const errText = await response.text().catch(() => '');
-                        console.warn(`[Job Log] Error HTTP ${response.status} en Groq (${model}):`, errText);
+                        let msg = errText;
+                        try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
+                        lastGroqError = `Groq ${response.status}: ${String(msg).slice(0, 200)}`;
+                        console.warn(`[Job Log] ${lastGroqError}`);
+                        if ([400, 401, 403, 429].includes(response.status)) break;
                         continue;
                     }
 
@@ -850,16 +1020,21 @@ ${text}`;
                     try {
                         data = await response.json();
                     } catch (_) {
+                        lastGroqError = `Groq (${model}): error al leer respuesta`;
                         continue;
                     }
 
                     const contentStr = data.choices?.[0]?.message?.content;
-                    if (!contentStr) continue;
+                    if (!contentStr) {
+                        lastGroqError = `Groq (${model}): respuesta sin contenido`;
+                        continue;
+                    }
 
                     let parsedData;
                     try {
                         parsedData = JSON.parse(contentStr);
                     } catch (_) {
+                        lastGroqError = `Groq (${model}): error al parsear JSON`;
                         continue;
                     }
 
@@ -868,6 +1043,8 @@ ${text}`;
                         title = parsedData.title;
                         aiExtracted = true;
                         break;
+                    } else {
+                        lastGroqError = `Groq (${model}): datos incompletos en la respuesta`;
                     }
                 }
             }
@@ -876,7 +1053,10 @@ ${text}`;
                 if (!credentials.gemini_api_key && !credentials.groq_api_key) {
                     throw new Error('Falta configurar al menos una API Key (Gemini o Groq) en las opciones.');
                 }
-                throw new Error('No se pudo obtener una respuesta válida de Gemini ni de Groq.');
+                const detalles = [lastGeminiError, lastGroqError].filter(Boolean).join(' | ');
+                throw new Error(detalles
+                    ? `No se pudo extraer la oferta. ${detalles}`
+                    : 'No se pudo extraer la oferta: la IA respondió pero la página no tiene datos de una oferta.');
             }
 
             }
@@ -897,16 +1077,16 @@ ${text}`;
                     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=spreadsheetId`,
                     { headers: { 'Authorization': `Bearer ${token}` } }
                 );
-                if (testResp.status === 401) {
+                if (testResp.status === 401 || testResp.status === 403) {
                     status.innerHTML = '<span class="spinner"></span> Renovando sesión de Google...';
                     token = await withTimeout(
-                        getGoogleAccessToken(),
+                        forceNewGoogleToken(token),
                         90000,
                         'Tiempo de espera agotado en la autenticación de Google.'
                     );
                 }
-            } catch (_) {
-                // If the test fetch fails for network reasons, proceed with the early token
+            } catch (sondeoErr) {
+                console.warn('[Job Log] Advertencia durante el sondeo de Google Sheets:', sondeoErr);
             }
 
             status.innerHTML = '<span class="spinner"></span> Conectando con Google Sheets...';
@@ -928,7 +1108,7 @@ ${text}`;
             );
 
             if (!metaResponse.ok) {
-                throw new Error(`Error al conectar con Google Sheets (Status: ${metaResponse.status}).`);
+                throw await sheetsError(metaResponse, 'Error al conectar con Google Sheets');
             }
 
             const metaData = await metaResponse.json();
@@ -992,7 +1172,7 @@ ${text}`;
             );
 
             if (!postResponse.ok) {
-                throw new Error(`Error al guardar en Google Sheets (Status: ${postResponse.status})`);
+                throw await sheetsError(postResponse, 'Error al guardar en Google Sheets');
             }
 
             status.className = 'status-text success';
@@ -1000,12 +1180,22 @@ ${text}`;
         } catch (err) {
             status.className = 'status-text error';
             if (err.message.includes('403') || err.message.toLowerCase().includes('permission')) {
-                status.innerHTML = `Error de permisos (403). <a href="#" id="errorLinkOptions" style="color: inherit; text-decoration: underline; font-weight: bold;">Haz clic aquí para cambiar de cuenta</a>.`;
-                const link = document.getElementById('errorLinkOptions');
+                status.innerHTML = `${err.message}. <a href="#" id="errorLinkChangeAccount" style="color: inherit; text-decoration: underline; font-weight: bold;">Haz clic aquí para cambiar de cuenta</a>.`;
+                const link = document.getElementById('errorLinkChangeAccount');
                 if (link) {
-                    link.addEventListener('click', (e) => {
+                    link.addEventListener('click', async (e) => {
                         e.preventDefault();
-                        chrome.runtime.openOptionsPage();
+                        status.className = 'status-text loading';
+                        status.textContent = 'Elegí la cuenta de Google…';
+                        try {
+                            await forceNewGoogleToken(null);
+                            await getAccessTokenViaWebFlow(true, true);   // prompt=select_account
+                            status.className = 'status-text success';
+                            status.textContent = 'Cuenta cambiada. Volvé a registrar la postulación.';
+                        } catch (authErr) {
+                            status.className = 'status-text error';
+                            status.textContent = `Error al cambiar de cuenta: ${authErr.message}`;
+                        }
                     });
                 }
             } else {
