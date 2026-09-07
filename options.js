@@ -284,6 +284,9 @@ const setupTogglePassword = (inputId, buttonId) => {
     const input = document.getElementById(inputId);
     const button = document.getElementById(buttonId);
     if (!input || !button) return;
+    button.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+    });
     button.addEventListener('click', () => {
         if (input.type === 'password') {
             input.type = 'text';

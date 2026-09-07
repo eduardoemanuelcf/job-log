@@ -5,6 +5,7 @@
   <title>Job Log — Configuración</title>
   <style>
     :root {
+      color-scheme: dark;
 
       --bg: oklch(0.19 0.006 240);
       --surface: oklch(0.24 0.008 240);
@@ -197,7 +198,7 @@
       border-radius: 6px;
       width: 100%;
       box-sizing: border-box;
-      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: border-color 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .input-wrapper:hover {
@@ -210,16 +211,37 @@
       box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
-    .input-wrapper input {
+    .input-wrapper input,
+    .input-wrapper input[type="text"],
+    .input-wrapper input[type="password"] {
       flex: 1;
-      background: transparent;
-      border: none;
+      min-width: 0;
+      background: transparent !important;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
       color: var(--text-main);
       padding: 10px 12px;
       font-size: var(--fs-body);
+      line-height: var(--lh-normal);
       outline: none;
       box-sizing: border-box;
       font-family: inherit;
+      width: auto !important;
+      transition: none !important;
+      color-scheme: dark;
+    }
+
+    .input-wrapper input:hover,
+    .input-wrapper input:focus {
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    }
+
+    .input-wrapper input::-ms-reveal,
+    .input-wrapper input::-ms-clear {
+      display: none;
     }
 
     .btn-toggle {
@@ -232,10 +254,20 @@
       justify-content: center;
       padding: 0 12px;
       height: 100%;
+      flex-shrink: 0;
       transition: color 0.15s ease;
     }
 
     .btn-toggle:hover {
+      color: var(--text-main);
+    }
+
+    .btn-toggle:focus {
+      outline: none;
+    }
+
+    .btn-toggle:focus-visible {
+      outline: none;
       color: var(--text-main);
     }
 
@@ -246,11 +278,13 @@
       color: var(--text-main);
       padding: 10px 12px;
       font-size: var(--fs-body);
+      line-height: var(--lh-normal);
       outline: none;
-      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: border-color 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1);
       box-sizing: border-box;
       width: 100%;
       font-family: inherit;
+      color-scheme: dark;
     }
 
     input[type="text"]:hover {
