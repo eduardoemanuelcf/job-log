@@ -679,12 +679,10 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
             throw new Error('Error al rellenar los datos de la nueva semana.');
         }
 
-        // Apply alternating row color (white for odd weeks, blue for even weeks)
-        // Rows: 5=Semana1(odd), 6=Semana2(even), 7=Semana3(odd), ...
         const isEvenRow = (rowNumber - 5) % 2 === 1;
         const rowColor = isEvenRow
-            ? { red: 0.918, green: 0.945, blue: 0.984 }  // #eaf1fb
-            : { red: 1, green: 1, blue: 1 };            // white
+            ? { red: 0.918, green: 0.945, blue: 0.984 }
+            : { red: 1, green: 1, blue: 1 };
 
         const colorRequest = {
             requests: [

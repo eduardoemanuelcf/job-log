@@ -1,4 +1,3 @@
-# Carpetas internas de agentes e IDE
 .agents/
 .gemini/
 .claude/
@@ -6,7 +5,6 @@
 .opencode/
 skills-lock.json
 
-# Archivos de sistema operativo
 .DS_Store
 Thumbs.db
 Desktop.ini

@@ -172,7 +172,6 @@ const extractAndCacheToken = async (redirectUrl) => {
     }
 };
 
-// ponytail: un helper, tres call sites — el status suelto no alcanza para diagnosticar
 const sheetsError = async (response, contexto) => {
     const body = await response.json().catch(() => null);
     const detalle = body?.error?.message || '';
@@ -244,9 +243,6 @@ const updateAuthBanner = (loggedIn, onLoginSuccess = null) => {
     }
 };
 
-// ponytail: chequea en cada apertura del popup, sin caché propia.
-// raw.githubusercontent ya cachea ~5min en su CDN. Si molesta, guardar
-// un timestamp en chrome.storage.local y chequear cada 6h.
 const NOTICE_URL = 'https://raw.githubusercontent.com/eduardoemanuelcf/job-log/main/notice.json';
 const UPDATE_HELP_URL = 'https://github.com/eduardoemanuelcf/job-log#actualizar';
 
@@ -268,8 +264,6 @@ const checkForUpdate = async () => {
         const hayUpdate = isNewer(aviso.version, local);
         const { dismissed_notice } = await chrome.storage.local.get('dismissed_notice');
 
-        // ponytail: un update no se puede descartar, tiene que seguir molestando.
-        // Solo los mensajes sueltos se descartan.
         if (!hayUpdate && (!aviso.mensaje || aviso.id === dismissed_notice)) return;
 
         document.getElementById('updateBannerText').textContent = hayUpdate
@@ -285,7 +279,7 @@ const checkForUpdate = async () => {
             document.getElementById('updateBanner').className = 'auth-banner';
         };
         document.getElementById('updateBanner').className = 'auth-banner logged-out';
-    } catch { /* sin red o GitHub caído: no molestamos */ }
+    } catch {}
 };
 
 const loadConfig = async () => {
@@ -376,7 +370,7 @@ const loadWeeksFromSheets = async (spreadsheetId, token, selected) => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
-    checkForUpdate();   // fire-and-forget, no bloquea el render del popup
+    checkForUpdate();
     const normalArea = document.getElementById('normalArea');
     const configRequiredArea = document.getElementById('configRequiredArea');
     const btnConfigurar = document.getElementById('btnConfigurar');
@@ -479,9 +473,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnPostular.disabled = true;
         status.className = 'status-text loading';
 
-        // Obtain Google token FIRST, before slow scraping/Gemini steps.
-        // This way the login prompt appears immediately and the popup
-        // won't be closed by the user mid-flow losing all progress.
         let earlyToken = null;
         try {
             status.innerHTML = '<span class="spinner"></span> Verificando sesión de Google...';
@@ -771,7 +762,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         text = `${domTitle} ${domCompany}`.trim();
                                     }
 
-                                    // ponytail: páginas de formulario de postulación no tienen datos de la oferta
                                     if (/smartapply\.indeed\.com|\/indeedapply\/|\/jobs\/application/.test(window.location.href)) {
                                         return { error: 'Esta es la página del formulario de postulación. Volvé a la oferta y registrala desde ahí.' };
                                     }
@@ -822,7 +812,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             let lastGeminiError = '';
             let lastGroqError = '';
 
-            // 1. Intentar con Gemini primero (si hay clave configurada)
             if (credentials.gemini_api_key) {
                 status.innerHTML = '<span class="spinner"></span> Analizando con Gemini...';
 
@@ -862,11 +851,10 @@ ${text}`;
 
                 const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
 
-                // ponytail: thinking mínimo — extraer 2 campos no necesita razonamiento y evita latencia innecesaria.
                 const thinkingCfg = (model) => ({
                     thinkingConfig: model.startsWith('gemini-3')
-                        ? { thinkingLevel: 'minimal' }        // Gemini 3: 'minimal' responde casi instantáneamente
-                        : { thinkingBudget: 0 }               // Gemini 2.5: 0 = apagado
+                        ? { thinkingLevel: 'minimal' }
+                        : { thinkingBudget: 0 }
                 });
 
                 for (let i = 0; i < GEMINI_MODELS.length; i++) {
@@ -907,7 +895,7 @@ ${text}`;
                         try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
                         lastGeminiError = `Gemini ${response.status}: ${String(msg).slice(0, 200)}`;
                         console.warn(`[Job Log] ${lastGeminiError}`);
-                        if ([400, 401, 403, 429].includes(response.status)) break;  // la key/cuota no mejora con otro modelo
+                        if ([400, 401, 403, 429].includes(response.status)) break;
                         continue;
                     }
 
@@ -945,7 +933,6 @@ ${text}`;
                 }
             }
 
-            // 2. Usar Groq como fallback si Gemini falló o no estaba configurado
             if (!aiExtracted && credentials.groq_api_key) {
                 const isFallbackMsg = credentials.gemini_api_key
                     ? 'Gemini no disponible, intentando con Groq (fallback)...'
@@ -1069,10 +1056,8 @@ ${text}`;
                 throw new Error('No se pudieron determinar los datos de la oferta.');
             }
 
-            // Reuse the token obtained at the start, or refresh if needed
             let token = earlyToken;
             try {
-                // Check if the early token is still valid (it might have expired during Gemini processing)
                 const testResp = await fetch(
                     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=spreadsheetId`,
                     { headers: { 'Authorization': `Bearer ${token}` } }
@@ -1189,7 +1174,7 @@ ${text}`;
                         status.textContent = 'Elegí la cuenta de Google…';
                         try {
                             await forceNewGoogleToken(null);
-                            await getAccessTokenViaWebFlow(true, true);   // prompt=select_account
+                            await getAccessTokenViaWebFlow(true, true);
                             status.className = 'status-text success';
                             status.textContent = 'Cuenta cambiada. Volvé a registrar la postulación.';
                         } catch (authErr) {
