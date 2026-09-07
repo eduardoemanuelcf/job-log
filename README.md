@@ -1,6 +1,6 @@
 # Job Log — Extensión de Chrome para registrar tus postulaciones
 
-**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge y Opera. Registra automáticamente tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn obtiene los datos de la oferta (título y empresa) directamente desde la API interna de LinkedIn usando tu propia sesión; en otros portales de empleo usa la API de **Gemini** (IA principal) o **Groq** (IA de fallback) para extraer la información del texto de la oferta.
+**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge y Opera. Registra automáticamente tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn obtiene los datos de la oferta (título y empresa) directamente desde la API interna de LinkedIn usando tu propia sesión; en otros portales de empleo usa **Gemini** o **Groq** para extraer la información del texto de la oferta: elegís cuál es la IA principal y la otra queda como respaldo.
 
 Todo corre en tu navegador. Sin servidores. Sin intermediarios.
 
@@ -40,12 +40,12 @@ La extensión se instala en modo desarrollador (no está en la Chrome Web Store 
 
 ### 2.1 — Obtener tus API Keys (gratis)
 
-- **Gemini API Key (IA Principal):**
+- **Gemini API Key:**
   1. Entrá a [Google AI Studio](https://aistudio.google.com/app/apikey) e iniciá sesión con tu cuenta de Google.
   2. Hacé clic en **"Get API key"** → **"Create API key"**.
-- **Groq API Key (IA Fallback - Opcional):**
+- **Groq API Key (opcional):**
   1. Entrá a [Groq Console](https://console.groq.com/keys).
-  2. Creá una clave API si querés disponer de respaldo ante caídas o límites de cuota en Gemini.
+  2. Creá una clave API si querés usar Groq como IA principal, o como respaldo ante caídas o límites de cuota en Gemini.
 
 ![Paso 2.1: Obtener API Key en Google AI Studio](./docs/assets/02-1-get-api-key.png)
 
@@ -53,8 +53,9 @@ La extensión se instala en modo desarrollador (no está en la Chrome Web Store 
 
 1. Hacé clic en el ícono de la extensión en la barra de herramientas y presioná **Configuración** (o clic derecho → **Opciones**).
 2. Completá los campos:
-   - **Gemini API Key (IA Principal):** pegá tu clave de Gemini.
-   - **Groq API Key (IA Fallback - Opcional):** pegá tu clave de Groq si la tenés.
+   - **IA principal:** elegí Gemini o Groq. La otra queda como respaldo si cargaste su clave.
+   - **Gemini API Key:** pegá tu clave de Gemini.
+   - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
    - **URL de Google Sheets:** pegá la URL de tu planilla del Paso 0.
 3. Hacé clic en **Guardar configuración**. La extensión va a validar las credenciales y queda lista.
 
@@ -102,7 +103,7 @@ Sin embargo, el acceso está limitado a nivel de código. Podés revisar el arch
 La extensión corre completamente en tu navegador. El flujo de datos es directo:
 
 - **En LinkedIn:** el título y la empresa se obtienen de la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión ya iniciada, y se guardan directamente en tu Google Sheets. Para estas ofertas no interviene la IA.
-- **En otros portales:** el texto de la oferta se envía a la API de Gemini (o Groq como fallback) para estructurar los datos, que luego se guardan en tu Google Sheets.
+- **En otros portales:** el texto de la oferta se envía a la IA que elegiste como principal (y a la otra como respaldo si falla) para estructurar los datos, que luego se guardan en tu Google Sheets.
 
 Ningún dato personal ni credencial pasa por un servidor externo.
 

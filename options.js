@@ -222,7 +222,7 @@ const checkGoogleAuthStatus = async () => {
     }
 };
 
-const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'spreadsheet_id', 'cv_goal', 'current_week'];
+const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'ai_provider', 'spreadsheet_id', 'cv_goal', 'current_week'];
 
 const loadConfig = async () => {
     const synced = await new Promise((resolve) => {
@@ -244,6 +244,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (data.groq_api_key) {
             document.getElementById('groqApiKey').value = data.groq_api_key;
         }
+        document.getElementById(data.ai_provider === 'groq' ? 'aiGroq' : 'aiGemini').checked = true;
         if (data.spreadsheet_id) {
             document.getElementById('spreadsheetId').value = data.spreadsheet_id;
         }
@@ -308,6 +309,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
     const btnSave = document.getElementById('btnSave');
     const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
     const groqApiKey = document.getElementById('groqApiKey').value.trim();
+    const aiProvider = document.querySelector('input[name="aiProvider"]:checked').value;
     const spreadsheetIdInput = document.getElementById('spreadsheetId').value.trim();
     const cvGoal = document.getElementById('cvGoal').value.trim() || '25';
     const status = document.getElementById('status');
@@ -315,6 +317,13 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
     if (!geminiApiKey && !groqApiKey) {
         status.className = 'status-msg error';
         status.textContent = 'Debes ingresar al menos una API Key (Gemini o Groq)';
+        return;
+    }
+
+    const claveElegida = aiProvider === 'groq' ? groqApiKey : geminiApiKey;
+    if (!claveElegida) {
+        status.className = 'status-msg error';
+        status.textContent = `Elegiste ${aiProvider === 'groq' ? 'Groq' : 'Gemini'} como IA principal pero no cargaste su API Key`;
         return;
     }
 
@@ -329,6 +338,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
             chrome.storage.sync.set({
                 gemini_api_key: geminiApiKey,
                 groq_api_key: groqApiKey,
+                ai_provider: aiProvider,
                 spreadsheet_id: spreadsheetId,
                 cv_goal: cvGoal
             }, () => {

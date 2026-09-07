@@ -214,7 +214,7 @@ const forceNewGoogleToken = async (viejo) => {
     return getGoogleAccessToken();
 };
 
-const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'spreadsheet_id', 'cv_goal', 'current_week'];
+const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'ai_provider', 'spreadsheet_id', 'cv_goal', 'current_week'];
 
 let isLoggedIn = false;
 
@@ -304,6 +304,240 @@ const loadConfig = async () => {
         chrome.storage.local.get(CONFIG_KEYS, (r) => resolve(r || {}));
     });
     return { ...local, ...synced };
+};
+
+const buildAiPrompt = (detectedSource, domTitle, domCompany, text) => {
+    const hintBlock = (domTitle || domCompany)
+        ? `\nDatos detectados de la oferta principal (referencia PRINCIPAL; no los reemplaces por otra oferta del listado o sidebar):\n- Título: ${domTitle || '(no detectado)'}\n- Empresa: ${domCompany || '(no detectado)'}\n`
+        : '';
+
+    return `Analiza el siguiente texto de una oferta de empleo y extrae los datos en un formato JSON estructurado. El texto puede incluir menús, barras laterales y secciones de "Trabajos Similares" u "Ofertas Guardadas" con OTRAS ofertas y empresas: ignoralas por completo y extraé solo los datos de la oferta principal (la de la descripción del puesto). La empresa contratante suele figurar junto a una etiqueta "Empresa". El JSON debe contener exactamente tres campos de tipo string:
+- "company": el nombre de la empresa contratante de la oferta principal.
+- "title": el título del puesto de la oferta principal.
+- "source": debe ser el string exacto "${detectedSource}".
+${hintBlock}
+Texto a analizar:
+${text}`;
+};
+
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+
+const GROQ_MODELS = [
+    'openai/gpt-oss-20b',
+    'llama-3.3-70b-versatile'
+];
+
+const runGemini = async (apiKey, promptText, setStatus) => {
+    const geminiBody = {
+        contents: [
+            {
+                parts: [
+                    { text: promptText }
+                ]
+            }
+        ],
+        generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                    company: { type: 'STRING' },
+                    title: { type: 'STRING' },
+                    source: { type: 'STRING' }
+                },
+                required: ['company', 'title', 'source']
+            }
+        }
+    };
+
+    const thinkingCfg = (model) => ({
+        thinkingConfig: model.startsWith('gemini-3')
+            ? { thinkingLevel: 'minimal' }
+            : { thinkingBudget: 0 }
+    });
+
+    let error = '';
+
+    for (let i = 0; i < GEMINI_MODELS.length; i++) {
+        const model = GEMINI_MODELS[i];
+        if (i > 0) {
+            setStatus(`Reintentando con Gemini (${model})...`);
+        }
+
+        let response;
+        try {
+            response = await withTimeout(
+                fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            ...geminiBody,
+                            generationConfig: {
+                                ...geminiBody.generationConfig,
+                                ...thinkingCfg(model)
+                            }
+                        })
+                    }
+                ),
+                12000,
+                'Tiempo de espera agotado al conectar con Gemini'
+            );
+        } catch (e) {
+            error = `Gemini (${model}): ${e.message}`;
+            console.warn(`[Job Log] Error de conexión con Gemini (${model}):`, e);
+            continue;
+        }
+
+        if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            let msg = errText;
+            try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
+            error = `Gemini ${response.status}: ${String(msg).slice(0, 200)}`;
+            console.warn(`[Job Log] ${error}`);
+            if ([400, 401, 403, 429].includes(response.status)) break;
+            continue;
+        }
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (_) {
+            error = `Gemini (${model}): error al leer respuesta`;
+            continue;
+        }
+
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const jsonPart = parts.find(p => p.text && !p.thought);
+        if (!jsonPart) {
+            error = `Gemini (${model}): respuesta sin contenido`;
+            continue;
+        }
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(jsonPart.text);
+        } catch (_) {
+            error = `Gemini (${model}): error al parsear JSON`;
+            continue;
+        }
+
+        if (parsedData.company && parsedData.title) {
+            return { company: parsedData.company, title: parsedData.title };
+        }
+        error = `Gemini (${model}): datos incompletos en la respuesta`;
+    }
+
+    return { error };
+};
+
+const runGroq = async (apiKey, promptText, setStatus) => {
+    const groqBody = {
+        messages: [
+            {
+                role: 'user',
+                content: promptText
+            }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.1
+    };
+
+    let error = '';
+
+    for (let i = 0; i < GROQ_MODELS.length; i++) {
+        const model = GROQ_MODELS[i];
+        if (i > 0) {
+            setStatus(`Reintentando con Groq (${model})...`);
+        }
+
+        let response;
+        try {
+            response = await withTimeout(
+                fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ...groqBody, model })
+                }),
+                20000,
+                'Tiempo de espera agotado al conectar con Groq'
+            );
+        } catch (e) {
+            error = `Groq (${model}): ${e.message}`;
+            console.warn(`[Job Log] Error de conexión con Groq (${model}):`, e);
+            continue;
+        }
+
+        if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            let msg = errText;
+            try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
+            error = `Groq ${response.status}: ${String(msg).slice(0, 200)}`;
+            console.warn(`[Job Log] ${error}`);
+            if ([400, 401, 403, 429].includes(response.status)) break;
+            continue;
+        }
+
+        let data;
+        try {
+            data = await response.json();
+        } catch (_) {
+            error = `Groq (${model}): error al leer respuesta`;
+            continue;
+        }
+
+        const contentStr = data.choices?.[0]?.message?.content;
+        if (!contentStr) {
+            error = `Groq (${model}): respuesta sin contenido`;
+            continue;
+        }
+
+        let parsedData;
+        try {
+            parsedData = JSON.parse(contentStr);
+        } catch (_) {
+            error = `Groq (${model}): error al parsear JSON`;
+            continue;
+        }
+
+        if (parsedData.company && parsedData.title) {
+            return { company: parsedData.company, title: parsedData.title };
+        }
+        error = `Groq (${model}): datos incompletos en la respuesta`;
+    }
+
+    return { error };
+};
+
+const AI_PROVIDERS = {
+    gemini: { nombre: 'Gemini', keyField: 'gemini_api_key', run: runGemini },
+    groq: { nombre: 'Groq', keyField: 'groq_api_key', run: runGroq }
+};
+
+const aiOrder = (provider) => (provider === 'groq' ? ['groq', 'gemini'] : ['gemini', 'groq']);
+
+const extractWithAI = async (credentials, promptText, setStatus) => {
+    const errores = [];
+
+    for (const id of aiOrder(credentials.ai_provider)) {
+        const { nombre, keyField, run } = AI_PROVIDERS[id];
+        const apiKey = credentials[keyField];
+        if (!apiKey) continue;
+
+        setStatus(errores.length
+            ? `${nombre} como respaldo, reintentando...`
+            : `Analizando con ${nombre}...`);
+
+        const res = await run(apiKey, promptText, setStatus);
+        if (res.company && res.title) return res;
+        if (res.error) errores.push(res.error);
+    }
+
+    return { error: errores.join(' | ') };
 };
 
 const renderWeeks = (weeks, selected) => {
@@ -822,243 +1056,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                 title = domTitle;
             } else {
 
-            let aiExtracted = false;
-            let lastGeminiError = '';
-            let lastGroqError = '';
-
-            if (credentials.gemini_api_key) {
-                status.innerHTML = '<span class="spinner"></span> Analizando con Gemini...';
-
-                const hintBlock = (domTitle || domCompany)
-                    ? `\nDatos detectados de la oferta principal (referencia PRINCIPAL; no los reemplaces por otra oferta del listado o sidebar):\n- Título: ${domTitle || '(no detectado)'}\n- Empresa: ${domCompany || '(no detectado)'}\n`
-                    : '';
-
-                const promptText = `Analiza el siguiente texto de una oferta de empleo y extrae los datos en un formato JSON estructurado. El texto puede incluir menús, barras laterales y secciones de "Trabajos Similares" u "Ofertas Guardadas" con OTRAS ofertas y empresas: ignoralas por completo y extraé solo los datos de la oferta principal (la de la descripción del puesto). La empresa contratante suele figurar junto a una etiqueta "Empresa". El JSON debe contener exactamente tres campos de tipo string:
-- "company": el nombre de la empresa contratante de la oferta principal.
-- "title": el título del puesto de la oferta principal.
-- "source": debe ser el string exacto "${detectedSource}".
-${hintBlock}
-Texto a analizar:
-${text}`;
-
-                const geminiBody = {
-                    contents: [
-                        {
-                            parts: [
-                                { text: promptText }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        responseMimeType: 'application/json',
-                        responseSchema: {
-                            type: 'OBJECT',
-                            properties: {
-                                company: { type: 'STRING' },
-                                title: { type: 'STRING' },
-                                source: { type: 'STRING' }
-                            },
-                            required: ['company', 'title', 'source']
-                        }
-                    }
+                const promptText = buildAiPrompt(detectedSource, domTitle, domCompany, text);
+                const setStatus = (msg) => {
+                    status.innerHTML = `<span class="spinner"></span> ${msg}`;
                 };
 
-                const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+                const res = await extractWithAI(credentials, promptText, setStatus);
 
-                const thinkingCfg = (model) => ({
-                    thinkingConfig: model.startsWith('gemini-3')
-                        ? { thinkingLevel: 'minimal' }
-                        : { thinkingBudget: 0 }
-                });
-
-                for (let i = 0; i < GEMINI_MODELS.length; i++) {
-                    const model = GEMINI_MODELS[i];
-                    if (i > 0) {
-                        status.innerHTML = `<span class="spinner"></span> Reintentando con Gemini (${model})...`;
-                    }
-
-                    let response;
-                    try {
-                        response = await withTimeout(
-                            fetch(
-                                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${credentials.gemini_api_key}`,
-                                {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        ...geminiBody,
-                                        generationConfig: {
-                                            ...geminiBody.generationConfig,
-                                            ...thinkingCfg(model)
-                                        }
-                                    })
-                                }
-                            ),
-                            12000,
-                            'Tiempo de espera agotado al conectar con Gemini'
-                        );
-                    } catch (e) {
-                        lastGeminiError = `Gemini (${model}): ${e.message}`;
-                        console.warn(`[Job Log] Error de conexión con Gemini (${model}):`, e);
-                        continue;
-                    }
-
-                    if (!response.ok) {
-                        const errText = await response.text().catch(() => '');
-                        let msg = errText;
-                        try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
-                        lastGeminiError = `Gemini ${response.status}: ${String(msg).slice(0, 200)}`;
-                        console.warn(`[Job Log] ${lastGeminiError}`);
-                        if ([400, 401, 403, 429].includes(response.status)) break;
-                        continue;
-                    }
-
-                    let data;
-                    try {
-                        data = await response.json();
-                    } catch (_) {
-                        lastGeminiError = `Gemini (${model}): error al leer respuesta`;
-                        continue;
-                    }
-
-                    const parts = data?.candidates?.[0]?.content?.parts || [];
-                    const jsonPart = parts.find(p => p.text && !p.thought);
-                    if (!jsonPart) {
-                        lastGeminiError = `Gemini (${model}): respuesta sin contenido`;
-                        continue;
-                    }
-
-                    let parsedData;
-                    try {
-                        parsedData = JSON.parse(jsonPart.text);
-                    } catch (_) {
-                        lastGeminiError = `Gemini (${model}): error al parsear JSON`;
-                        continue;
-                    }
-
-                    if (parsedData.company && parsedData.title) {
-                        company = parsedData.company;
-                        title = parsedData.title;
-                        aiExtracted = true;
-                        break;
-                    } else {
-                        lastGeminiError = `Gemini (${model}): datos incompletos en la respuesta`;
-                    }
-                }
-            }
-
-            if (!aiExtracted && credentials.groq_api_key) {
-                const isFallbackMsg = credentials.gemini_api_key
-                    ? 'Gemini no disponible, intentando con Groq (fallback)...'
-                    : 'Analizando con Groq...';
-                status.innerHTML = `<span class="spinner"></span> ${isFallbackMsg}`;
-
-                const hintBlock = (domTitle || domCompany)
-                    ? `\nDatos detectados de la oferta principal (referencia PRINCIPAL; no los reemplaces por otra oferta del listado o sidebar):\n- Título: ${domTitle || '(no detectado)'}\n- Empresa: ${domCompany || '(no detectado)'}\n`
-                    : '';
-
-                const promptText = `Analiza el siguiente texto de una oferta de empleo y extrae los datos en un formato JSON estructurado. El texto puede incluir menús, barras laterales y secciones de "Trabajos Similares" u "Ofertas Guardadas" con OTRAS ofertas y empresas: ignoralas por completo y extraé solo los datos de la oferta principal (la de la descripción del puesto). La empresa contratante suele figurar junto a una etiqueta "Empresa". El JSON debe contener exactamente tres campos de tipo string:
-- "company": el nombre de la empresa contratante de la oferta principal.
-- "title": el título del puesto de la oferta principal.
-- "source": debe ser el string exacto "${detectedSource}".
-${hintBlock}
-Texto a analizar:
-${text}`;
-
-                const GROQ_MODELS = [
-                    'openai/gpt-oss-20b',
-                    'llama-3.3-70b-versatile'
-                ];
-
-                const groqBody = {
-                    messages: [
-                        {
-                            role: 'user',
-                            content: promptText
-                        }
-                    ],
-                    response_format: { type: 'json_object' },
-                    temperature: 0.1
-                };
-
-                for (let i = 0; i < GROQ_MODELS.length; i++) {
-                    const model = GROQ_MODELS[i];
-                    if (i > 0) {
-                        status.innerHTML = `<span class="spinner"></span> Reintentando con Groq (${model})...`;
-                    }
-
-                    let response;
-                    try {
-                        response = await withTimeout(
-                            fetch('https://api.groq.com/openai/v1/chat/completions', {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Bearer ${credentials.groq_api_key}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({ ...groqBody, model })
-                            }),
-                            20000,
-                            'Tiempo de espera agotado al conectar con Groq'
-                        );
-                    } catch (e) {
-                        lastGroqError = `Groq (${model}): ${e.message}`;
-                        console.warn(`[Job Log] Error de conexión con Groq (${model}):`, e);
-                        continue;
-                    }
-
-                    if (!response.ok) {
-                        const errText = await response.text().catch(() => '');
-                        let msg = errText;
-                        try { msg = JSON.parse(errText)?.error?.message || errText; } catch (_) {}
-                        lastGroqError = `Groq ${response.status}: ${String(msg).slice(0, 200)}`;
-                        console.warn(`[Job Log] ${lastGroqError}`);
-                        if ([400, 401, 403, 429].includes(response.status)) break;
-                        continue;
-                    }
-
-                    let data;
-                    try {
-                        data = await response.json();
-                    } catch (_) {
-                        lastGroqError = `Groq (${model}): error al leer respuesta`;
-                        continue;
-                    }
-
-                    const contentStr = data.choices?.[0]?.message?.content;
-                    if (!contentStr) {
-                        lastGroqError = `Groq (${model}): respuesta sin contenido`;
-                        continue;
-                    }
-
-                    let parsedData;
-                    try {
-                        parsedData = JSON.parse(contentStr);
-                    } catch (_) {
-                        lastGroqError = `Groq (${model}): error al parsear JSON`;
-                        continue;
-                    }
-
-                    if (parsedData.company && parsedData.title) {
-                        company = parsedData.company;
-                        title = parsedData.title;
-                        aiExtracted = true;
-                        break;
-                    } else {
-                        lastGroqError = `Groq (${model}): datos incompletos en la respuesta`;
-                    }
-                }
-            }
-
-            if (!aiExtracted) {
-                if (!credentials.gemini_api_key && !credentials.groq_api_key) {
+                if (res.company && res.title) {
+                    company = res.company;
+                    title = res.title;
+                } else if (!credentials.gemini_api_key && !credentials.groq_api_key) {
                     throw new Error('Falta configurar al menos una API Key (Gemini o Groq) en las opciones.');
+                } else {
+                    throw new Error(res.error
+                        ? `No se pudo extraer la oferta. ${res.error}`
+                        : 'No se pudo extraer la oferta: la IA respondió pero la página no tiene datos de una oferta.');
                 }
-                const detalles = [lastGeminiError, lastGroqError].filter(Boolean).join(' | ');
-                throw new Error(detalles
-                    ? `No se pudo extraer la oferta. ${detalles}`
-                    : 'No se pudo extraer la oferta: la IA respondió pero la página no tiene datos de una oferta.');
-            }
 
             }
 

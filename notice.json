@@ -1,6 +1,6 @@
 {
-  "version": "1.3",
-  "id": "2026-09-07-sesion",
-  "mensaje": "La sesión de Google ahora se renueva sola, sin volver a conectar cada hora.",
+  "version": "1.4",
+  "id": "2026-09-07-ia-principal",
+  "mensaje": "Ya podés elegir si la IA principal es Gemini o Groq, y la sesión de Google se renueva sola.",
   "link": "https://github.com/eduardoemanuelcf/job-log#actualizar"
 }
