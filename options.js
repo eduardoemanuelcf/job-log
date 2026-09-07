@@ -41,6 +41,13 @@ const getGoogleAccessToken = async () => {
                 }
             });
         });
+        if (token) {
+            chrome.storage.local.set({
+                google_access_token: token,
+                google_token_expires_at: Date.now() + 3500 * 1000
+            });
+            chrome.storage.local.remove(['user_disconnected']);
+        }
         return token;
     } catch (err) {
         try {
@@ -53,6 +60,13 @@ const getGoogleAccessToken = async () => {
                     }
                 });
             });
+            if (token) {
+                chrome.storage.local.set({
+                    google_access_token: token,
+                    google_token_expires_at: Date.now() + 3500 * 1000
+                });
+                chrome.storage.local.remove(['user_disconnected']);
+            }
             return token;
         } catch (interactiveErr) {
             return getAccessTokenViaWebFlow(true);
@@ -147,12 +161,79 @@ const extractAndCacheToken = async (redirectUrl) => {
                     google_token_expires_at: expiresAt
                 }, res);
             });
+            chrome.storage.local.remove(['user_disconnected']);
             return accessToken;
         } else {
             throw new Error('No se pudo extraer el token.');
         }
     } catch (e) {
         throw new Error(`Error al procesar la respuesta: ${e.message}`);
+    }
+};
+
+const sheetsError = async (response, contexto) => {
+    const body = await response.json().catch(() => null);
+    const detalle = body?.error?.message || '';
+    const codigo = body?.error?.status || '';
+    return new Error(`${contexto} (${response.status}${codigo ? ' ' + codigo : ''}): ${detalle}`);
+};
+
+const fetchGoogleEmail = async (token) => {
+    try {
+        const res = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${encodeURIComponent(token)}`);
+        if (!res.ok) return '';
+        const data = await res.json().catch(() => ({}));
+        return data.email || '';
+    } catch (_) {
+        return '';
+    }
+};
+
+const checkGoogleAuthStatus = async () => {
+    const storage = await new Promise((resolve) => {
+        chrome.storage.local.get(
+            ['user_disconnected', 'google_access_token', 'google_token_expires_at', 'google_account_email'],
+            (result) => resolve(result || {})
+        );
+    });
+
+    if (storage.user_disconnected) {
+        return { isConnected: false };
+    }
+
+    if (storage.google_access_token && storage.google_token_expires_at && storage.google_token_expires_at > Date.now()) {
+        return {
+            isConnected: true,
+            token: storage.google_access_token,
+            email: storage.google_account_email || ''
+        };
+    }
+
+    const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave();
+    if (isBrave) {
+        return { isConnected: false };
+    }
+
+    try {
+        const token = await new Promise((resolve, reject) => {
+            chrome.identity.getAuthToken({ interactive: false }, (t) => {
+                if (chrome.runtime.lastError || !t) {
+                    reject(chrome.runtime.lastError || new Error('Sin token'));
+                } else {
+                    resolve(t);
+                }
+            });
+        });
+        if (token) {
+            chrome.storage.local.set({
+                google_access_token: token,
+                google_token_expires_at: Date.now() + 3500 * 1000
+            });
+            return { isConnected: true, token, email: storage.google_account_email || '' };
+        }
+        return { isConnected: false };
+    } catch (_) {
+        return { isConnected: false };
     }
 };
 
@@ -271,6 +352,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
             });
         });
 
+        let sheetWarning = null;
         try {
             const token = await getGoogleAccessToken();
             if (token) {
@@ -278,55 +360,72 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
                     method: 'GET',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                if (metaResponse.ok) {
-                    const metaData = await metaResponse.json();
-                    let exactProgresoTitle = '';
-                    for (const s of metaData.sheets || []) {
-                        if (s.properties && s.properties.title && (s.properties.title.trim().toLowerCase() === 'progreso' || s.properties.title.trim().toLowerCase() === 'progreso semanal')) {
-                            exactProgresoTitle = s.properties.title;
-                            break;
-                        }
+                if (!metaResponse.ok) {
+                    throw await sheetsError(metaResponse, 'Error al acceder a la planilla');
+                }
+                const metaData = await metaResponse.json();
+                let exactProgresoTitle = '';
+                for (const s of metaData.sheets || []) {
+                    if (s.properties && s.properties.title && (s.properties.title.trim().toLowerCase() === 'progreso' || s.properties.title.trim().toLowerCase() === 'progreso semanal')) {
+                        exactProgresoTitle = s.properties.title;
+                        break;
                     }
-                    if (exactProgresoTitle) {
-                        const updateGoalBody = {
-                            range: `'${exactProgresoTitle}'!I2`,
-                            majorDimension: 'ROWS',
-                            values: [[parseInt(cvGoal, 10)]]
-                        };
-                        await fetch(
-                            `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!I2`)}?valueInputOption=USER_ENTERED`,
-                            {
-                                method: 'PUT',
-                                headers: {
-                                    'Authorization': `Bearer ${token}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(updateGoalBody)
-                            }
-                        );
+                }
+                if (exactProgresoTitle) {
+                    const updateGoalBody = {
+                        range: `'${exactProgresoTitle}'!I2`,
+                        majorDimension: 'ROWS',
+                        values: [[parseInt(cvGoal, 10)]]
+                    };
+                    const updateGoalResp = await fetch(
+                        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!I2`)}?valueInputOption=USER_ENTERED`,
+                        {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(updateGoalBody)
+                        }
+                    );
+                    if (!updateGoalResp.ok) {
+                        throw await sheetsError(updateGoalResp, 'Error al actualizar objetivo en la planilla');
                     }
                 }
             }
         } catch (sheetsErr) {
-            console.warn('[Job Log Options] No se pudo escribir el objetivo en Sheets de forma silenciosa:', sheetsErr);
+            console.warn('[Job Log Options] No se pudo acceder a Sheets:', sheetsErr);
+            sheetWarning = sheetsErr.message;
         }
 
-
-
-        btnSave.className = 'btn-save success';
-        btnSave.textContent = 'Configuración guardada';
-
-        status.className = 'status-msg success';
-        status.textContent = 'Configuración guardada correctamente';
-
-        setTimeout(() => {
+        if (sheetWarning) {
             btnSave.className = 'btn-save';
-            btnSave.textContent = 'Guardar configuración';
-            btnSave.disabled = false;
+            btnSave.textContent = 'Guardado con advertencias';
 
-            status.className = 'status-msg';
-            status.textContent = '';
-        }, 2000);
+            status.className = 'status-msg warning';
+            status.textContent = `Configuración guardada, pero no se pudo acceder a la planilla: ${sheetWarning}`;
+
+            setTimeout(() => {
+                btnSave.className = 'btn-save';
+                btnSave.textContent = 'Guardar configuración';
+                btnSave.disabled = false;
+            }, 5000);
+        } else {
+            btnSave.className = 'btn-save success';
+            btnSave.textContent = 'Configuración guardada';
+
+            status.className = 'status-msg success';
+            status.textContent = 'Configuración guardada correctamente';
+
+            setTimeout(() => {
+                btnSave.className = 'btn-save';
+                btnSave.textContent = 'Guardar configuración';
+                btnSave.disabled = false;
+
+                status.className = 'status-msg';
+                status.textContent = '';
+            }, 2000);
+        }
     } catch (err) {
         btnSave.className = 'btn-save';
         btnSave.textContent = 'Guardar configuración';
@@ -394,7 +493,7 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
         );
 
         if (!metaResponse.ok) {
-            throw new Error(`Error al leer el Google Sheet (Status: ${metaResponse.status}). Verifica el ID del documento.`);
+            throw await sheetsError(metaResponse, 'Error al leer el Google Sheet');
         }
 
         const metaData = await metaResponse.json();
@@ -683,21 +782,60 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
     }
 });
 
-const updateGoogleAccountUI = () => {
-    chrome.storage.local.get(['google_access_token', 'google_token_expires_at'], (result) => {
-        const btnConnect = document.getElementById('btnConnectGoogle');
-        const btnDisconnect = document.getElementById('btnDisconnectGoogle');
+const updateGoogleAccountUI = async () => {
+    const btnConnect = document.getElementById('btnConnectGoogle');
+    const btnDisconnect = document.getElementById('btnDisconnectGoogle');
+    const infoDiv = document.getElementById('googleAccountInfo');
+    const emailEl = document.getElementById('googleAccountEmail');
+    const badge = document.getElementById('googleAccountBadge');
 
-        if (btnConnect && btnDisconnect) {
-            if (result.google_access_token && result.google_token_expires_at && result.google_token_expires_at > Date.now()) {
-                btnConnect.style.display = 'none';
-                btnDisconnect.style.display = 'inline-flex';
-            } else {
-                btnConnect.style.display = 'inline-flex';
-                btnDisconnect.style.display = 'none';
+    const auth = await checkGoogleAuthStatus();
+
+    if (auth.isConnected) {
+        if (btnConnect) btnConnect.style.display = 'none';
+        if (btnDisconnect) {
+            btnDisconnect.style.display = 'inline-flex';
+            btnDisconnect.disabled = false;
+            btnDisconnect.textContent = 'Cerrar sesión';
+        }
+
+        if (badge) {
+            badge.className = 'badge success';
+            badge.textContent = 'Conectada';
+            badge.style.display = 'inline-flex';
+        }
+
+        let email = auth.email;
+        if (!email && auth.token) {
+            email = await fetchGoogleEmail(auth.token);
+            if (email) {
+                chrome.storage.local.set({ google_account_email: email });
             }
         }
-    });
+
+        if (infoDiv && emailEl) {
+            if (email) {
+                emailEl.textContent = email;
+                infoDiv.style.display = 'block';
+            } else {
+                infoDiv.style.display = 'none';
+            }
+        }
+    } else {
+        if (btnConnect) {
+            btnConnect.style.display = 'inline-flex';
+            btnConnect.disabled = false;
+            btnConnect.textContent = 'Conectar cuenta';
+        }
+        if (btnDisconnect) btnDisconnect.style.display = 'none';
+        if (infoDiv) infoDiv.style.display = 'none';
+
+        if (badge) {
+            badge.className = 'badge';
+            badge.textContent = 'No conectada';
+            badge.style.display = 'inline-flex';
+        }
+    }
 };
 
 document.getElementById('btnConnectGoogle').addEventListener('click', async () => {
@@ -709,19 +847,25 @@ document.getElementById('btnConnectGoogle').addEventListener('click', async () =
     status.textContent = '';
 
     try {
-        const token = await getGoogleAccessToken();
+        await new Promise(r => chrome.storage.local.remove(['user_disconnected'], r));
+        const token = await getAccessTokenViaWebFlow(true, true);
         if (token) {
+            const email = await fetchGoogleEmail(token);
+            if (email) {
+                await new Promise(r => chrome.storage.local.set({ google_account_email: email }, r));
+            }
             status.className = 'status-msg success';
             status.textContent = 'Cuenta conectada correctamente.';
-            updateGoogleAccountUI();
+            await updateGoogleAccountUI();
         }
     } catch (err) {
         console.error('Error connecting account:', err);
         status.className = 'status-msg error';
         status.textContent = `Error al conectar cuenta: ${err.message}`;
+        await updateGoogleAccountUI();
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Conectar Cuenta';
+        btn.textContent = 'Conectar cuenta';
         setTimeout(() => {
             status.className = 'status-msg';
             status.textContent = '';
@@ -743,7 +887,10 @@ document.getElementById('btnDisconnectGoogle').addEventListener('click', async (
         });
 
         await new Promise((resolve) => {
-            chrome.storage.local.remove(['google_access_token', 'google_token_expires_at'], resolve);
+            chrome.storage.local.remove(['google_access_token', 'google_token_expires_at', 'google_account_email'], resolve);
+        });
+        await new Promise((resolve) => {
+            chrome.storage.local.set({ user_disconnected: true }, resolve);
         });
 
         if (cached && cached.google_access_token) {
@@ -766,22 +913,20 @@ document.getElementById('btnDisconnectGoogle').addEventListener('click', async (
             console.warn('Error clearing primary profile cached token:', e);
         }
 
-        status.className = 'status-msg success';
-        status.textContent = 'Sesión cerrada. Iniciando selección de cuenta...';
-
-        await new Promise(r => setTimeout(r, 1000));
-
-        const token = await getAccessTokenViaWebFlow(true, true);
-        if (token) {
-            status.className = 'status-msg success';
-            status.textContent = 'Nueva cuenta conectada correctamente.';
-            updateGoogleAccountUI();
+        try {
+            await new Promise(r => chrome.identity.clearAllCachedAuthTokens(r));
+        } catch (e) {
+            console.warn('Error clearing all cached auth tokens:', e);
         }
+
+        status.className = 'status-msg success';
+        status.textContent = 'Sesión cerrada correctamente.';
+        await updateGoogleAccountUI();
     } catch (err) {
-        console.error('Error changing account:', err);
+        console.error('Error closing session:', err);
         status.className = 'status-msg error';
-        status.textContent = `Error al cambiar de cuenta: ${err.message}`;
-        updateGoogleAccountUI();
+        status.textContent = `Error al cerrar sesión: ${err.message}`;
+        await updateGoogleAccountUI();
     } finally {
         btn.disabled = false;
         btn.textContent = 'Cerrar sesión';

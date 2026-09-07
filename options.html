@@ -461,6 +461,14 @@
       word-break: break-word;
     }
 
+    .status-msg.warning {
+      display: block;
+      background-color: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+      word-break: break-word;
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * {
         transition: none !important;
@@ -536,11 +544,18 @@
     </div>
 
     <div class="card" id="googleAccountCard">
-      <h2>Cuenta de Google</h2>
+      <div class="header-with-badge">
+        <h2>Cuenta de Google</h2>
+        <span id="googleAccountBadge" class="badge" style="display: none;"></span>
+      </div>
       <div class="subtitle">Conexión con la hoja de cálculo de Google Sheets.</div>
 
+      <div id="googleAccountInfo" style="display: none; margin-bottom: 16px; font-size: var(--fs-body); color: var(--text-muted);">
+        Conectado como <strong id="googleAccountEmail" style="color: var(--text-main);"></strong>
+      </div>
+
       <div style="display: flex; gap: 12px; flex-direction: column;">
-        <button type="button" class="btn-save" id="btnConnectGoogle">Conectar Cuenta</button>
+        <button type="button" class="btn-save" id="btnConnectGoogle">Conectar cuenta</button>
         <button type="button" class="btn-danger" id="btnDisconnectGoogle" style="display: none;">Cerrar sesión</button>
       </div>
       <div id="googleStatus" class="status-msg"></div>
