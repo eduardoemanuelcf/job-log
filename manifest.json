@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Log",
-  "version": "1.7",
+  "version": "1.8",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA45gyFrNSseKWPaIlYKh+CPtnqmf2ky0ecTc5n1CQx6It/A98S4oua29tnCmdRrPGFKW/monZwGJrDdb7KtNIkkVT7b0/yGC+F66tZsLDDntmjgTwpKBNif46bMUK8ATO4yre9aO149USK/yt1Dy+q03Z6sQ2/QFPtP/JjCwAtSzFVK5sgAyB6Ag90IJkckmmTkZjDtPh1LYS0DCwlFw2bJA1e/bp2AzqZ07IwCf/3loi1MNF5x5jiOhEZK62iltP1VV91MaCazPr",
   "permissions": [
     "activeTab",
