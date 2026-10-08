@@ -53,4 +53,4 @@ with ZipFile(destination) as archive:
     assert set(archive.namelist()) == files | {"manifest.json"}
 print(destination)
 print(staging)
-print('See FIREFOX.md for Firefox OAuth and AMO, or STORE_LISTING.md for Chrome publication.')
+print('See README.md for setup and FIREFOX.md for Firefox installation.')

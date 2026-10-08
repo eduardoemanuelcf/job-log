@@ -1,6 +1,6 @@
 # Job Log: Extensión para registrar tus postulaciones
 
-**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge, Opera y Firefox de escritorio 140 o posterior. Registra tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn obtiene los datos de la oferta (título y empresa) directamente desde la API interna de LinkedIn usando tu propia sesión. En otros portales de empleo usa **Gemini** o **Groq** para extraer la información del texto de la oferta: elegís cuál es la IA principal y la otra queda como respaldo.
+**Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge, Opera y Firefox de escritorio 140 o posterior. Registra tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn intenta obtener el título y la empresa usando tu sesión iniciada. En otros portales de empleo usa **Gemini** o **Groq** para extraer la información del texto de la oferta: elegís cuál es la IA principal y la otra queda como respaldo.
 
 La extensión funciona desde tu navegador y se conecta directamente con Google, LinkedIn y los proveedores de IA que configurás. Job Log no opera un servidor intermediario.
 
@@ -20,7 +20,7 @@ Antes de instalar la extensión, creá tu copia de la planilla:
 
 La publicación en Chrome Web Store está en preparación. Mientras tanto, podés probarla en modo desarrollador:
 
-Para **Firefox**, seguí [la guía de instalación temporal y publicación en AMO](./FIREFOX.md). El paquete se genera con `python3 scripts/package.py --browser firefox`; cargá `dist/firefox/manifest.json` desde `about:debugging#/runtime/this-firefox`. La instalación temporal se elimina al cerrar Firefox. La instalación permanente necesita la firma de Mozilla.
+Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La instalación desde el repositorio es temporal y se elimina al cerrar Firefox. Los pasos siguientes son para Chrome y los navegadores compatibles con sus extensiones.
 
 1. **Descargá el código:**
    - Con Git: `git clone https://github.com/eduardoemanuelcf/job-log.git`
@@ -59,7 +59,8 @@ Para **Firefox**, seguí [la guía de instalación temporal y publicación en AM
    - **Gemini API Key:** pegá tu clave de Gemini.
    - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
    - **URL de Google Sheets:** pegá la URL de tu planilla del Paso 0.
-3. Hacé clic en **Guardar configuración**. La extensión va a validar las credenciales y queda lista.
+3. Aceptá el uso de datos y hacé clic en **Guardar configuración**.
+4. Pulsá **Conectar cuenta** y autorizá el acceso a Google Sheets.
 
 ![Paso 2: Panel de configuración de credenciales](./docs/assets/02-configuration.png)
 
@@ -69,24 +70,34 @@ Para **Firefox**, seguí [la guía de instalación temporal y publicación en AM
 
 1. Abrí cualquier oferta de empleo en **LinkedIn** (u otro portal soportado).
 2. Hacé clic en el ícono de **Job Log**.
-3. Seleccioná la semana. Si querés, desplegá **Nota opcional** y escribí una nota opcional de hasta 2.000 caracteres. Hacé clic en **Registrar postulación**. Al configurar la extensión debés aceptar el uso de datos explicado en el formulario.
-4. Job Log extrae empresa, puesto, enlace y origen. puede enviar el texto de la oferta a Gemini o Groq cuando necesita IA.
+3. Seleccioná la semana. Si querés, desplegá **Nota opcional** y escribí hasta 2.000 caracteres. Hacé clic en **Registrar postulación**.
+4. Job Log extrae empresa, puesto, enlace y origen. Puede enviar el texto de la oferta a Gemini o Groq cuando necesita IA.
 5. La fila se agrega a tu planilla con estado **En proceso** y la nota en la columna I, **Notas** (el encabezado debe estar en I2). Podés editar esos datos en Google Sheets. La nota no se envía a Gemini ni Groq.
-6. Pulsá **Ver progreso** para abrir el gráfico dentro de la extensión. Muestra hasta 12 semanas por período, empezando por las últimas. Usá **Anterior** y **Siguiente** para recorrer tu historial, o **Actualizar** para leer los cambios de tu planilla. En ventanas angostas muestra menos semanas, sin scroll horizontal. Cambiar de período no consulta Sheets y la escala vertical se mantiene para comparar los datos. Durante la carga se muestra un spinner centrado, con el mismo tamaño de contenedor que el gráfico; las etiquetas se acomodan en dos líneas y el tramo visible aparece entre los controles de navegación.
+6. Pulsá **Ver progreso** para consultar tus postulaciones y metas semanales. Usá **Anterior** y **Siguiente** para recorrer tu historial, o **Actualizar** para leer los cambios de tu planilla.
 
-El último borrador de nota se conserva localmente para la misma URL de oferta al cerrar y volver a abrir el popup. Se elimina cuando borrás el texto o cuando se registra correctamente la postulación; se conserva si el registro falla. Es un único borrador: escribir una nota en otra oferta lo reemplaza.
+La última nota sin enviar se conserva al reabrir la misma oferta. Escribir en otra oferta reemplaza ese borrador; registrar la postulación o borrar el texto lo elimina.
 
 ![Paso 3: Extensión en acción](./docs/assets/03-usage-demo.png)
 
 ---
 
-## Actualizaciones y publicación
+## Actualizaciones
 
 Las instalaciones desde Chrome Web Store o Firefox Add-ons recibirán las versiones publicadas mediante el sistema de actualización del navegador. Un push a GitHub no publica una versión en las tiendas.
 
-Para preparar el ZIP ejecutá `python3 scripts/package.py`. Los archivos y textos de publicación están en [STORE_LISTING.md](./STORE_LISTING.md). Para probar desde el código, descargá la revisión que quieras y recargá la extensión en `chrome://extensions/`.
+Si instalaste desde el código, descargá la revisión que quieras y recargá la extensión en la página de extensiones del navegador. En Firefox, volvé a generar y cargar el paquete siguiendo [su guía](./FIREFOX.md).
 
-Para Firefox ejecutá `python3 scripts/package.py --browser firefox`. Ambos paquetes comparten versión y código; el manifest de cada navegador se genera al empaquetar. Ejecutá `node scripts/check.cjs` para verificar los recorridos compartidos y consultá [FIREFOX.md](./FIREFOX.md) para la prueba con el navegador real.
+## Preparar un paquete desde el código
+
+Con Node.js y Python 3 instalados, ejecutá desde la carpeta del proyecto:
+
+```bash
+node scripts/check.cjs
+python3 scripts/package.py --browser chrome
+python3 scripts/package.py --browser firefox
+```
+
+Los paquetes quedan en `dist/`.
 
 ---
 
@@ -94,9 +105,7 @@ Para Firefox ejecutá `python3 scripts/package.py --browser firefox`. Ambos paqu
 
 ### ¿Por qué Google avisa que la extensión puede "ver y editar todas tus hojas de cálculo"?
 
-El flujo actual solicita `https://www.googleapis.com/auth/spreadsheets`, que permite ver, editar, crear y eliminar todas tus hojas de cálculo. Existe el permiso más limitado `drive.file`, pero requiere un flujo de selección/autorización de archivos que esta extensión todavía no implementa.
-
-Sin embargo, el acceso está limitado a nivel de código. Podés revisar el archivo [`popup.js`](./popup.js) y verificar que la extensión solo consulta el ID de la planilla que vos configuraste, y nunca toca ningún otro archivo de tu cuenta.
+Google concede acceso a todas tus hojas de cálculo. Job Log usa la planilla que configuraste, pero el permiso concedido sigue siendo amplio. Podés revocarlo desde tu cuenta de Google.
 
 ### Arquitectura sin servidores
 
@@ -109,10 +118,4 @@ Las claves API se envían al proveedor correspondiente para autenticar las solic
 
 ### Código abierto
 
-Podés auditar todo el código en los archivos principales:
-* [`manifest.json`](./manifest.json): permisos requeridos: `activeTab`, `storage`, `identity` y `scripting`.
-* [`popup.js`](./popup.js): lógica de extracción con Gemini/Groq y guardado en Sheets.
-* [`options.js`](./options.js): configuración y almacenamiento de preferencias.
-* [`google-auth.js`](./google-auth.js): autenticación compartida para Chrome, Brave y Firefox.
-* [`progress.js`](./progress.js): lectura del progreso semanal y gráfico sin dependencias externas.
-* [`extension.js`](./extension.js) y [`theme.css`](./theme.css): configuración y estilos compartidos.
+El código está disponible en este repositorio para que puedas revisarlo, modificarlo y comprobar cómo se usan tus datos.

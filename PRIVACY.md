@@ -2,7 +2,7 @@
 
 Última actualización: 8 de octubre de 2026. Aplicable a las versiones de Chrome, Brave, Edge, Opera y Firefox de escritorio.
 
-La página pública de privacidad está en https://job-log.emanuelcabral.dev/privacy. Este documento incluye el funcionamiento de Firefox y puede utilizarse como texto de privacidad en AMO.
+La página pública de privacidad está en https://job-log.emanuelcabral.dev/privacy.
 
 Job Log procesa el texto y la URL de la oferta que elegís, datos de postulaciones, tokens de Google, el correo disponible y claves API. Puede enviar texto a Gemini o Groq para extraer los datos y guardar las postulaciones directamente en tu Google Sheets. En LinkedIn consulta la oferta usando tu sesión. si no confirma los datos, puede recurrir a IA.
 
