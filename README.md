@@ -118,4 +118,4 @@ Las claves API se envían al proveedor correspondiente para autenticar las solic
 
 ### Código abierto
 
-El código está disponible en este repositorio para que puedas revisarlo, modificarlo y comprobar cómo se usan tus datos.
+El código está disponible bajo la [licencia MIT](./LICENSE) para que puedas revisarlo, modificarlo y comprobar cómo se usan tus datos.

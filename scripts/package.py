@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Chrome or Firefox packages using only extension runtime files."""
+"""Build Chrome or Firefox packages with extension runtime files and the license."""
 import argparse
 import json
 from pathlib import Path
@@ -25,11 +25,11 @@ if browser == 'firefox':
             'personallyIdentifyingInfo', 'authenticationInfo', 'browsingActivity', 'websiteContent'
         ]}
     }}
-files = {"popup.html", "popup.js", "popup-progress.js", "options.html", "options.js", "oauth-config.js", "google-auth.js", "extension.js", "theme.css", "progress.html", "progress.js"}
+files = {"LICENSE", "popup.html", "popup.js", "popup-progress.js", "options.html", "options.js", "oauth-config.js", "google-auth.js", "extension.js", "theme.css", "progress.html", "progress.js"}
 files.update(manifest["icons"].values())
 files.update(manifest["action"]["default_icon"].values())
 for name in files:
-    assert (root / name).is_file(), f"Missing runtime file: {name}"
+    assert (root / name).is_file(), f"Missing package file: {name}"
 
 prefix = 'job-log-firefox' if browser == 'firefox' else 'job-log'
 destination = root / "dist" / f"{prefix}-{manifest['version']}.zip"

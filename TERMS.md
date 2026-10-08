@@ -1,6 +1,6 @@
 # Condiciones del Servicio de Job Log
 
-Última actualización: 1 de junio de 2026
+Última actualización: 8 de octubre de 2026
 
 Al utilizar la extensión Job Log, aceptas las siguientes condiciones de uso.
 
@@ -18,4 +18,4 @@ Esta extensión se distribuye "tal cual", sin garantías de ningún tipo, expres
 Al ser un proyecto de código abierto, la extensión puede recibir modificaciones, mejoras o discontinuarse en cualquier momento por decisión de los desarrolladores o de la comunidad.
 
 ## 5. Licencia
-Este proyecto es libre y de código abierto. Puedes bifurcarlo, modificarlo y adaptarlo a tus necesidades.
+Este proyecto se distribuye bajo la [licencia MIT](./LICENSE). Puedes usarlo, modificarlo y distribuirlo, incluso comercialmente, conservando el aviso de copyright y el texto de la licencia.
