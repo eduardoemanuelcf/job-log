@@ -1,228 +1,4 @@
-const withTimeout = (promise, ms, errorMessage) => {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(errorMessage));
-        }, ms);
-        promise
-            .then((res) => {
-                clearTimeout(timer);
-                resolve(res);
-            })
-            .catch((err) => {
-                clearTimeout(timer);
-                reject(err);
-            });
-    });
-};
-
-const getGoogleAccessToken = async () => {
-    const cached = await new Promise((resolve) => {
-        chrome.storage.local.get(['google_access_token', 'google_token_expires_at'], (result) => {
-            resolve(result || {});
-        });
-    });
-
-    if (cached.google_access_token && cached.google_token_expires_at && cached.google_token_expires_at > Date.now() + 120000) {
-        return cached.google_access_token;
-    }
-
-    const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave();
-    
-    if (isBrave) {
-        return getAccessTokenViaWebFlow(true);
-    }
-
-    try {
-        const token = await new Promise((resolve, reject) => {
-            chrome.identity.getAuthToken({ interactive: true }, (t) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                    resolve(t);
-                }
-            });
-        });
-        if (token) {
-            chrome.storage.local.set({
-                google_access_token: token,
-                google_token_expires_at: Date.now() + 3500 * 1000
-            });
-            chrome.storage.local.remove(['user_disconnected']);
-        }
-        return token;
-    } catch (err) {
-        return getAccessTokenViaWebFlow(true);
-    }
-};
-
-const getGoogleAccessTokenSilently = async () => {
-    const cached = await new Promise((resolve) => {
-        chrome.storage.local.get(['google_access_token', 'google_token_expires_at', 'user_disconnected'], (result) => {
-            resolve(result || {});
-        });
-    });
-
-    if (cached.user_disconnected) {
-        throw new Error('No hay sesión de Google');
-    }
-
-    if (cached.google_access_token && cached.google_token_expires_at && cached.google_token_expires_at > Date.now() + 120000) {
-        return cached.google_access_token;
-    }
-
-    const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave();
-    if (isBrave) {
-        return getAccessTokenViaWebFlow(false);
-    }
-
-    try {
-        const token = await new Promise((resolve, reject) => {
-            chrome.identity.getAuthToken({ interactive: false }, (t) => {
-                if (chrome.runtime.lastError || !t) {
-                    reject(chrome.runtime.lastError || new Error('Sin token'));
-                } else {
-                    resolve(t);
-                }
-            });
-        });
-        if (token) {
-            chrome.storage.local.set({
-                google_access_token: token,
-                google_token_expires_at: Date.now() + 3500 * 1000
-            });
-            chrome.storage.local.remove(['user_disconnected']);
-        }
-        return token;
-    } catch (err) {
-        return getAccessTokenViaWebFlow(false);
-    }
-};
-
-const loginHintParam = async () => {
-    const stored = await new Promise((resolve) => {
-        chrome.storage.local.get(['google_account_email'], (result) => resolve(result || {}));
-    });
-    return stored.google_account_email
-        ? `&login_hint=${encodeURIComponent(stored.google_account_email)}`
-        : '';
-};
-
-const getAccessTokenViaWebFlow = async (interactive, forceSelectAccount = false) => {
-    const manifest = chrome.runtime.getManifest();
-    const clientId = manifest.oauth2.client_id;
-    const scopes = [...manifest.oauth2.scopes, 'email'].join(' ');
-    const redirectUri = chrome.identity.getRedirectURL();
-
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(clientId)}&` +
-        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-        `response_type=token&` +
-        `scope=${encodeURIComponent(scopes)}`;
-
-    const launch = (url, isInteractive) => new Promise((resolve, reject) => {
-        chrome.identity.launchWebAuthFlow({ url, interactive: isInteractive }, (redirectUrl) => {
-            if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
-                return;
-            }
-            if (!redirectUrl) {
-                reject(new Error('No se recibio la URL de redireccion.'));
-                return;
-            }
-            resolve(extractAndCacheToken(redirectUrl));
-        });
-    });
-
-    if (forceSelectAccount) {
-        return launch(`${authUrl}&prompt=select_account`, true);
-    }
-
-    try {
-        return await launch(`${authUrl}&prompt=none${await loginHintParam()}`, false);
-    } catch (e) {
-        if (!interactive) {
-            throw e;
-        }
-        return launch(authUrl, true);
-    }
-};
-
-const fetchGoogleEmail = async (token) => {
-    try {
-        const res = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${encodeURIComponent(token)}`);
-        if (!res.ok) return '';
-        const data = await res.json().catch(() => ({}));
-        return data.email || '';
-    } catch (_) {
-        return '';
-    }
-};
-
-const extractAndCacheToken = async (redirectUrl) => {
-    try {
-        const params = new URLSearchParams(redirectUrl.split('#')[1]);
-        const accessToken = params.get('access_token');
-        const expiresIn = params.get('expires_in') || '3600';
-        
-        if (accessToken) {
-            const expiresAt = Date.now() + parseInt(expiresIn, 10) * 1000;
-            await new Promise((res) => {
-                chrome.storage.local.set({
-                    google_access_token: accessToken,
-                    google_token_expires_at: expiresAt
-                }, res);
-            });
-            chrome.storage.local.remove(['user_disconnected']);
-            const email = await fetchGoogleEmail(accessToken);
-            if (email) {
-                chrome.storage.local.set({ google_account_email: email });
-            }
-            return accessToken;
-        } else {
-            throw new Error('No se pudo extraer el token de acceso.');
-        }
-    } catch (e) {
-        throw new Error(`Error al procesar la respuesta: ${e.message}`);
-    }
-};
-
-const sheetsError = async (response, contexto) => {
-    const body = await response.json().catch(() => null);
-    const detalle = body?.error?.message || '';
-    const codigo = body?.error?.status || '';
-    return new Error(`${contexto} (${response.status}${codigo ? ' ' + codigo : ''}): ${detalle}`);
-};
-
-const forceNewGoogleToken = async (viejo) => {
-    await new Promise(r => chrome.storage.local.remove(['google_access_token', 'google_token_expires_at'], r));
-    if (viejo) {
-        await new Promise(r => {
-            try {
-                chrome.identity.removeCachedAuthToken({ token: viejo }, () => r());
-            } catch (_) {
-                r();
-            }
-        });
-    }
-    await new Promise(r => {
-        try {
-            chrome.identity.clearAllCachedAuthTokens(() => r());
-        } catch (_) {
-            r();
-        }
-    });
-    return getGoogleAccessToken();
-};
-
-const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'ai_provider', 'spreadsheet_id', 'cv_goal', 'current_week'];
-
-let isLoggedIn = false;
-
-let currentOnLoginSuccess = null;
-
-const updateAuthBanner = (loggedIn, onLoginSuccess = null) => {
-    if (onLoginSuccess) currentOnLoginSuccess = onLoginSuccess;
-    isLoggedIn = loggedIn;
+const updateAuthBanner = (loggedIn) => {
     const banner = document.getElementById('authBanner');
     const icon = document.getElementById('authBannerIcon');
     const text = document.getElementById('authBannerText');
@@ -238,72 +14,8 @@ const updateAuthBanner = (loggedIn, onLoginSuccess = null) => {
         text.textContent = 'No hay sesión de Google';
         action.textContent = 'Iniciar sesión';
         action.style.display = '';
-        action.onclick = async () => {
-            try {
-                action.textContent = 'Conectando...';
-                action.disabled = true;
-                const token = await getGoogleAccessToken();
-                if (token) {
-                    updateAuthBanner(true);
-                    if (typeof currentOnLoginSuccess === 'function') {
-                        await currentOnLoginSuccess(token);
-                    }
-                }
-            } catch (e) {
-                action.textContent = 'Reintentar';
-                action.disabled = false;
-            }
-        };
+        action.onclick = () => chrome.runtime.openOptionsPage();
     }
-};
-
-const NOTICE_URL = 'https://raw.githubusercontent.com/eduardoemanuelcf/job-log/main/notice.json';
-const UPDATE_HELP_URL = 'https://github.com/eduardoemanuelcf/job-log#actualizar';
-
-const isNewer = (remote, local) => {
-    const a = String(remote).split('.').map(Number);
-    const b = String(local).split('.').map(Number);
-    for (let i = 0; i < Math.max(a.length, b.length); i++) {
-        const x = a[i] || 0, y = b[i] || 0;
-        if (x !== y) return x > y;
-    }
-    return false;
-};
-
-const checkForUpdate = async () => {
-    try {
-        const res = await withTimeout(fetch(NOTICE_URL), 5000, 'timeout');
-        const aviso = await res.json();
-        const local = chrome.runtime.getManifest().version;
-        const hayUpdate = isNewer(aviso.version, local);
-        const { dismissed_notice } = await chrome.storage.local.get('dismissed_notice');
-
-        if (!hayUpdate && (!aviso.mensaje || aviso.id === dismissed_notice)) return;
-
-        document.getElementById('updateBannerText').textContent = hayUpdate
-            ? `Versión nueva disponible: ${aviso.version} (tenés ${local}). ${aviso.mensaje || ''}`.trim()
-            : aviso.mensaje;
-        document.getElementById('updateBannerAction').onclick =
-            () => chrome.tabs.create({ url: aviso.link || UPDATE_HELP_URL });
-
-        const dismiss = document.getElementById('updateBannerDismiss');
-        dismiss.style.display = hayUpdate ? 'none' : '';
-        dismiss.onclick = () => {
-            chrome.storage.local.set({ dismissed_notice: aviso.id });
-            document.getElementById('updateBanner').className = 'auth-banner';
-        };
-        document.getElementById('updateBanner').className = 'auth-banner logged-out';
-    } catch {}
-};
-
-const loadConfig = async () => {
-    const synced = await new Promise((resolve) => {
-        chrome.storage.sync.get(CONFIG_KEYS, (r) => resolve(r || {}));
-    });
-    const local = await new Promise((resolve) => {
-        chrome.storage.local.get(CONFIG_KEYS, (r) => resolve(r || {}));
-    });
-    return { ...local, ...synced };
 };
 
 const buildAiPrompt = (detectedSource, domTitle, domCompany, text) => {
@@ -618,12 +330,14 @@ const loadWeeksFromSheets = async (spreadsheetId, token, selected) => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
-    checkForUpdate();
     const normalArea = document.getElementById('normalArea');
     const configRequiredArea = document.getElementById('configRequiredArea');
     const btnConfigurar = document.getElementById('btnConfigurar');
     const btnPostular = document.getElementById('btnPostular');
     const status = document.getElementById('status');
+    const note = document.getElementById('applicationNote');
+    const noteSection = document.getElementById('noteSection');
+    let noteUrl = '';
 
     btnConfigurar.addEventListener('click', () => {
         chrome.runtime.openOptionsPage();
@@ -646,11 +360,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         const credentials = { ...config, cached_weeks: cache.cached_weeks };
 
-        if ((!credentials.gemini_api_key && !credentials.groq_api_key) || !credentials.spreadsheet_id) {
+        if (!credentials.privacy_consent || (!credentials.gemini_api_key && !credentials.groq_api_key) || !credentials.spreadsheet_id) {
             normalArea.style.display = 'none';
             configRequiredArea.style.display = 'flex';
             return;
         }
+
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            noteUrl = tab?.url || '';
+            const draft = await new Promise(resolve => chrome.storage.local.get(['application_note_draft'], resolve));
+            if (noteUrl && draft.application_note_draft?.url === noteUrl && typeof draft.application_note_draft.text === 'string') {
+                note.value = draft.application_note_draft.text.slice(0, 2000);
+                noteSection.open = Boolean(note.value);
+            }
+        } catch (_) {
+        }
+        note.addEventListener('input', () => {
+            if (!noteUrl) return;
+            if (note.value) chrome.storage.local.set({ application_note_draft: { url: noteUrl, text: note.value } });
+            else chrome.storage.local.remove('application_note_draft');
+        });
 
         let spreadsheetId = credentials.spreadsheet_id.trim();
         const sheetIdMatch = spreadsheetId.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -667,38 +397,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             chrome.storage.local.get(['user_disconnected'], (result) => resolve(result || {}));
         });
 
-        const onLoginSuccess = async (newToken) => {
-            if (spreadsheetId) {
-                const ok = await loadWeeksFromSheets(spreadsheetId, newToken, credentials.current_week);
-                if (ok) {
-                    btnPostular.disabled = false;
-                }
-            }
-        };
-
         if (authStatus.user_disconnected) {
-            updateAuthBanner(false, onLoginSuccess);
+            updateAuthBanner(false);
             if (!hasCache) {
                 btnPostular.disabled = true;
                 document.getElementById('semanaSelect').innerHTML = '<option value="" disabled selected>Inicia sesión para cargar semanas</option>';
             }
         } else {
             try {
-                const token = hasCache
-                    ? await getGoogleAccessTokenSilently()
-                    : await getGoogleAccessToken();
+                const token = await getGoogleAccessTokenSilently();
                 if (token) {
-                    updateAuthBanner(true, onLoginSuccess);
+                    updateAuthBanner(true);
                     const ok = await loadWeeksFromSheets(spreadsheetId, token, credentials.current_week);
                     if (ok) {
                         btnPostular.disabled = false;
                     }
                 } else {
-                    updateAuthBanner(false, onLoginSuccess);
+                    updateAuthBanner(false);
                 }
             } catch (e) {
                 console.log('[Job Log] No se pudieron actualizar las semanas.');
-                updateAuthBanner(false, onLoginSuccess);
+                updateAuthBanner(false);
                 if (!hasCache) {
                     document.getElementById('semanaSelect').innerHTML = '<option value="" disabled selected>No se pudieron cargar las semanas</option>';
                 }
@@ -713,19 +432,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function handlePostular() {
+        if (btnPostular.disabled) return;
         if (!document.getElementById('semanaSelect').value) {
             status.className = 'status-text error';
             status.textContent = 'Las semanas aún se están cargando.';
             return;
         }
+        const noteText = note.value.trim();
+        if (noteText.length > 2000) {
+            status.className = 'status-text error';
+            status.textContent = 'La nota debe tener hasta 2.000 caracteres.';
+            return;
+        }
         btnPostular.disabled = true;
+        note.disabled = true;
         status.className = 'status-text loading';
 
         let earlyToken = null;
         try {
             status.innerHTML = '<span class="spinner"></span> Verificando sesión de Google...';
             earlyToken = await withTimeout(
-                getGoogleAccessToken(),
+                getGoogleAccessTokenSilently(),
                 90000,
                 'Tiempo de espera agotado en la autenticación de Google.'
             );
@@ -733,8 +460,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (authErr) {
             updateAuthBanner(false);
             status.className = 'status-text error';
-            status.textContent = authErr.message;
+            status.textContent = `${authErr.message}. Conectá Google desde Configuración.`;
             btnPostular.disabled = false;
+            note.disabled = false;
             return;
         }
 
@@ -743,8 +471,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const credentials = await loadConfig();
 
-            if ((!credentials.gemini_api_key && !credentials.groq_api_key) || !credentials.spreadsheet_id) {
-                throw new Error('Falta configurar la API Key (Gemini o Groq) o la URL de Google Sheets');
+            if (!credentials.privacy_consent || (!credentials.gemini_api_key && !credentials.groq_api_key) || !credentials.spreadsheet_id) {
+                throw new Error('Revisá la configuración y aceptá el uso de datos antes de registrar postulaciones.');
             }
 
             let spreadsheetId = credentials.spreadsheet_id.trim();
@@ -1058,7 +786,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const promptText = buildAiPrompt(detectedSource, domTitle, domCompany, text);
                 const setStatus = (msg) => {
-                    status.innerHTML = `<span class="spinner"></span> ${msg}`;
+                    status.textContent = msg;
                 };
 
                 const res = await extractWithAI(credentials, promptText, setStatus);
@@ -1093,7 +821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (testResp.status === 401 || testResp.status === 403) {
                     status.innerHTML = '<span class="spinner"></span> Renovando sesión de Google...';
                     token = await withTimeout(
-                        forceNewGoogleToken(token),
+                        forceNewGoogleToken(token, false),
                         90000,
                         'Tiempo de espera agotado en la autenticación de Google.'
                     );
@@ -1145,6 +873,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error(`No se encontró la pestaña Postulaciones.`);
             }
 
+            if (noteText) {
+                const headerResponse = await fetch(
+                    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactSheetTitle}'!I2`)}`,
+                    { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(15000) }
+                );
+                if (!headerResponse.ok) throw await sheetsError(headerResponse, 'Error al comprobar la columna Notas');
+                const header = await headerResponse.json();
+                if (String(header.values?.[0]?.[0] || '').trim().toLowerCase() !== 'notas') {
+                    throw new Error('La columna I de Postulaciones debe llamarse Notas (celda I2). Revisá tu planilla y volvé a intentar.');
+                }
+            }
+
             const semana = document.getElementById('semanaSelect').value;
 
             status.innerHTML = '<span class="spinner"></span> Registrando en Google Sheets...';
@@ -1156,13 +896,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             const fecha = `${dd}/${mm}/${yyyy}`;
 
             const escapedTitle = title.replace(/"/g, '""');
-            const formula_link = `=HYPERLINK("${url}"; "${escapedTitle}")`;
+            const escapedUrl = url.replace(/"/g, '""');
+            const formula_link = `=HYPERLINK("${escapedUrl}"; "${escapedTitle}")`;
+            const cellText = (value) => /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 
             const appendBody = {
                 range: `'${exactSheetTitle}'!A:A`,
                 majorDimension: 'ROWS',
                 values: [
-                    [fecha, company, semana, title, formula_link, 'En proceso', '', source]
+                    [fecha, cellText(company), cellText(semana), cellText(title), formula_link, 'En proceso', '', cellText(source), cellText(noteText)]
                 ]
             };
 
@@ -1190,25 +932,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             status.className = 'status-text success';
             status.textContent = 'Postulación registrada con éxito';
+            note.value = '';
+            noteSection.open = false;
+            if (noteUrl) {
+                const draft = await new Promise(resolve => chrome.storage.local.get(['application_note_draft'], resolve));
+                if (draft.application_note_draft?.url === noteUrl && typeof draft.application_note_draft.text === 'string' && draft.application_note_draft.text.trim() === noteText) {
+                    chrome.storage.local.remove('application_note_draft');
+                }
+            }
         } catch (err) {
             status.className = 'status-text error';
             if (err.message.includes('403') || err.message.toLowerCase().includes('permission')) {
-                status.innerHTML = `${err.message}. <a href="#" id="errorLinkChangeAccount" style="color: inherit; text-decoration: underline; font-weight: bold;">Haz clic aquí para cambiar de cuenta</a>.`;
-                const link = document.getElementById('errorLinkChangeAccount');
+                status.textContent = `${err.message}. `;
+                const link = document.createElement('a');
+                link.href = '#';
+                link.id = 'errorLinkChangeAccount';
+                link.style.color = 'inherit';
+                link.textContent = 'Cambiar cuenta de Google';
+                status.appendChild(link);
                 if (link) {
-                    link.addEventListener('click', async (e) => {
+                    link.addEventListener('click', (e) => {
                         e.preventDefault();
-                        status.className = 'status-text loading';
-                        status.textContent = 'Elegí la cuenta de Google…';
-                        try {
-                            await forceNewGoogleToken(null);
-                            await getAccessTokenViaWebFlow(true, true);
-                            status.className = 'status-text success';
-                            status.textContent = 'Cuenta cambiada. Volvé a registrar la postulación.';
-                        } catch (authErr) {
-                            status.className = 'status-text error';
-                            status.textContent = `Error al cambiar de cuenta: ${authErr.message}`;
-                        }
+                        chrome.runtime.openOptionsPage();
                     });
                 }
             } else {
@@ -1216,6 +961,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } finally {
             btnPostular.disabled = false;
+            note.disabled = false;
         }
     }
 });

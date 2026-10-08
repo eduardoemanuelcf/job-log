@@ -1,27 +1,23 @@
-# Política de Privacidad de Job Log
+# Política de privacidad de Job Log
 
-Última actualización: 1 de junio de 2026
+Última actualización: 8 de octubre de 2026. Aplicable a las versiones de Chrome, Brave, Edge, Opera y Firefox de escritorio.
 
-En Job Log, valoramos y respetamos tu privacidad. Esta Política de Privacidad describe cómo se manejan tus datos al utilizar la extensión.
+La página pública de privacidad está en https://job-log.emanuelcabral.dev/privacy. Este documento incluye el funcionamiento de Firefox y puede utilizarse como texto de privacidad en AMO.
 
-## 1. Recopilación de Información
-Job Log es una herramienta que funciona en su totalidad de forma local en tu navegador. 
-* **No recopilamos datos personales:** No registramos, almacenamos ni recopilamos nombres, correos electrónicos, historiales de navegación ni ninguna otra información de identificación personal.
-* **Sin servidores intermediarios:** La extensión no utiliza servidores propios ni bases de datos externas para procesar tus datos.
+Job Log procesa el texto y la URL de la oferta que elegís, datos de postulaciones, tokens de Google, el correo disponible y claves API. Puede enviar texto a Gemini o Groq para extraer los datos y guardar las postulaciones directamente en tu Google Sheets. En LinkedIn consulta la oferta usando tu sesión. si no confirma los datos, puede recurrir a IA.
 
-## 2. Uso y Almacenamiento de Credenciales
-Para funcionar, la extensión requiere que ingreses en la configuración: tu **Gemini API Key** (y opcionalmente tu **Groq API Key** como fallback) y la **URL de tu Google Sheets**.
-* **Almacenamiento Local:** Estos datos se guardan exclusivamente en el almacenamiento local y seguro de tu propio navegador (`chrome.storage.local` / `chrome.storage.sync`).
-* **Acceso Privado:** Tus credenciales nunca son enviadas a nosotros ni a terceros. Su único propósito es autenticar tus peticiones locales directamente ante las APIs oficiales de Google Gemini, Groq y Google Sheets.
+Las notas opcionales se guardan junto a la postulación en la columna Notas de tu planilla. No se envían a Gemini ni Groq. La página Progreso consulta las cantidades de postulaciones y las metas semanales de esa misma planilla para dibujar el gráfico dentro de la extensión. No guarda otra copia de esos datos ni modifica la planilla.
 
-## 3. Transferencia de Datos
-El flujo de información es directo y encriptado entre tu navegador y los servicios involucrados:
-* En LinkedIn, el título y la empresa de la oferta se leen directamente desde la API interna de LinkedIn (`https://www.linkedin.com/voyager/...`) usando tu sesión activa en el navegador. Para estas ofertas no se utiliza la IA.
-* En otros portales de empleo, el texto de la oferta se envía temporalmente a la API oficial de Google Gemini (`https://generativelanguage.googleapis.com`) como IA principal, o a Groq (`https://api.groq.com`) como fallback si Gemini no responde o supera su cuota, para estructurar los datos del empleo.
-* Los datos estructurados se envían directamente a tu cuenta de Google Sheets a través de la API oficial de Google Sheets (`https://sheets.googleapis.com`).
+Las claves API autentican las solicitudes al proveedor correspondiente. El token de Google autentica las consultas y escrituras en la planilla configurada. El correo disponible puede utilizarse para mostrar la cuenta conectada y sugerirla al volver a autenticar con Google. En LinkedIn, el lector utiliza la cookie de sesión necesaria para consultar esa misma plataforma. Job Log no opera un servidor intermediario ni incorpora publicidad o telemetría.
 
-## 4. Cambios en esta Política
-Nos reservamos el derecho de actualizar esta política en cualquier momento. Cualquier cambio será publicado en este repositorio.
+Las claves y preferencias se guardan en `storage.sync`, el almacenamiento sincronizable del navegador. Pueden sincronizarse mediante Chrome Sync o Firefox Sync si habilitaste la sincronización de extensiones. No se transfieren automáticamente entre Brave y Firefox. Los tokens, su vencimiento, el correo y las semanas en caché se guardan en `storage.local` del perfil donde instalaste Job Log. También se conserva un único borrador de nota local, asociado a la URL de la oferta. No se sincroniza; solo se recupera al abrir el popup en esa misma URL. Escribir una nota en otra oferta reemplaza ese borrador. Se elimina al borrar el texto o al registrar correctamente la postulación.
 
-## 5. Contacto
-Si tienes alguna duda o quieres auditar el código fuente, puedes acceder de forma abierta a este repositorio de GitHub.
+Los datos permanecen hasta que los borres o desinstales la extensión. Cerrar sesión elimina el token y correo locales, pero no borra la planilla, las claves ni las preferencias. Podés borrar las claves desde la configuración, eliminar los datos de la extensión o desinstalarla y revocar el acceso de Job Log desde los controles de tu cuenta Google. Las filas ya guardadas se eliminan desde Google Sheets; los datos sincronizados también están sujetos a los controles de la cuenta del navegador.
+
+La lectura de una oferta ocurre cuando pulsás Registrar postulación. Job Log no registra el historial general ni lee otras pestañas en segundo plano. La IA puede recibir hasta 6.000 caracteres del texto de la oferta, junto con el título y empresa detectados. Las consultas de semanas y objetivos utilizan la planilla que configuraste. Google concede el scope de acceso a todas tus hojas de cálculo, aunque el código utiliza la planilla elegida.
+
+El tratamiento de datos por Google, LinkedIn, Gemini y Groq está sujeto a las políticas y condiciones de esos proveedores. Las solicitudes de autenticación, las postulaciones guardadas y el texto enviado a la IA van directamente desde tu navegador a los servicios involucrados.
+
+Firefox 140 o posterior muestra las categorías de datos transmitidos al instalar la extensión. Además, la configuración requiere aceptar el uso de datos antes de guardar las preferencias y habilitar el registro de postulaciones.
+
+Contacto: eduardoemanuelcf@gmail.com.

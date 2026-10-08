@@ -1,48 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Job Log — Configuración</title>
   <link rel="icon" href="icons/toolbar32.png" type="image/png">
+  <link rel="stylesheet" href="theme.css">
   <style>
     :root {
       color-scheme: dark;
 
-      --bg: oklch(0.19 0.006 240);
-      --surface: oklch(0.24 0.008 240);
-      --input-bg: oklch(0.15 0.005 240);
-      --border-color: oklch(0.31 0.010 240);
-      --input-border: oklch(0.39 0.012 240);
-      --text-main: oklch(0.93 0.004 240);
-      --text-muted: oklch(0.66 0.008 240);
-      --text-faint: oklch(0.42 0.008 240);
+      --bg: var(--bg-color);
+      --surface: var(--card-bg);
 
-      --accent: oklch(0.60 0.07 240);
       --accent-hover: oklch(0.65 0.08 240);
       --accent-press: oklch(0.55 0.06 240);
-      --on-accent: oklch(0.15 0.005 240);
-      --focus-ring: rgba(96, 138, 166, 0.20);
 
       --accent-soft: oklch(0.60 0.07 240 / 0.04);
       --accent-soft-press: oklch(0.60 0.07 240 / 0.08);
 
-      --success-bg: oklch(0.24 0.03 145);
-      --success-border: oklch(0.30 0.04 145);
-      --success-text: oklch(0.75 0.11 145);
 
-      --error-bg: oklch(0.22 0.03 25);
-      --error-border: oklch(0.28 0.04 25);
-      --error-text: oklch(0.67 0.13 25);
 
       --warning-bg: oklch(0.23 0.03 75);
       --warning-border: oklch(0.30 0.04 75);
       --warning-text: oklch(0.77 0.09 75);
 
-      --disabled-bg: oklch(0.26 0.006 240);
-      --disabled-border: oklch(0.29 0.006 240);
-      --disabled-text: oklch(0.48 0.006 240);
 
-      --font-sans: 'SF Pro Display', 'Switzer', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --font-mono: 'Geist Mono', 'SF Mono', 'JetBrains Mono', monospace;
 
       --fs-wordmark: 1.75rem;
@@ -538,6 +521,21 @@
       word-break: break-word;
     }
 
+    .privacy-disclosure {
+      color: var(--text-muted);
+      font-size: var(--fs-body);
+      line-height: var(--lh-loose);
+      margin-bottom: 20px;
+    }
+
+    .privacy-disclosure summary { cursor: pointer; color: var(--text-main); }
+    .privacy-disclosure p { margin: 12px 0; }
+    .privacy-links { margin: 0 0 20px; font-size: var(--fs-small); }
+    .privacy-links a { color: var(--text-muted); }
+    .privacy-disclosure label { text-transform: none; letter-spacing: normal; font-size: var(--fs-body); align-items: flex-start; }
+    .privacy-disclosure input { width: auto; margin: 3px 0 0; flex-shrink: 0; }
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
+
     @media (prefers-reduced-motion: reduce) {
       * {
         transition: none !important;
@@ -581,7 +579,7 @@
           </label>
           <div class="input-wrapper">
             <input type="password" id="geminiApiKey" autocomplete="off" placeholder="AIzaSy...">
-            <button type="button" id="toggleApiKey" class="btn-toggle">
+            <button type="button" id="toggleApiKey" class="btn-toggle" aria-label="Mostrar u ocultar la clave de Gemini">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 5c7 0 10 7 10 7a19.5 19.5 0 0 1-5.07 5.94M1 1l22 22"></path><circle cx="12" cy="12" r="3"></circle></svg>
             </button>
           </div>
@@ -594,7 +592,7 @@
           </label>
           <div class="input-wrapper">
             <input type="password" id="groqApiKey" autocomplete="off" placeholder="gsk_...">
-            <button type="button" id="toggleGroqApiKey" class="btn-toggle">
+            <button type="button" id="toggleGroqApiKey" class="btn-toggle" aria-label="Mostrar u ocultar la clave de Groq">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 5c7 0 10 7 10 7a19.5 19.5 0 0 1-5.07 5.94M1 1l22 22"></path><circle cx="12" cy="12" r="3"></circle></svg>
             </button>
           </div>
@@ -620,9 +618,15 @@
           </div>
         </div>
 
+        <details id="privacyDisclosure" class="privacy-disclosure" open>
+          <summary class="disclosure-toggle">Uso de datos y privacidad<svg class="disclosure-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+          <p>Job Log guarda la oferta en tu planilla. Si necesita IA, envía texto a Gemini o Groq con tus claves y puede usar la otra como respaldo. Las claves y preferencias se guardan en el almacenamiento sincronizable del navegador (Chrome Sync o Firefox Sync, si activaste la sincronización de extensiones). Google concede acceso a todas tus hojas, aunque Job Log usa la que elegís. El token y tu correo quedan en este navegador.</p>
+          <label for="privacyConsent"><input type="checkbox" id="privacyConsent" required> Acepto este uso de datos.</label>
+        </details>
+        <p class="privacy-links"><a href="https://job-log.emanuelcabral.dev/privacy" target="_blank" rel="noopener noreferrer">Privacidad</a> · <a href="https://job-log.emanuelcabral.dev/terms" target="_blank" rel="noopener noreferrer">Condiciones</a></p>
         <button type="submit" class="btn-save" id="btnSave">Guardar configuración</button>
       </form>
-      <div id="status" class="status-msg"></div>
+      <div id="status" class="status-msg" role="status" aria-live="polite"></div>
     </div>
 
     <div class="card" id="googleAccountCard">
@@ -630,7 +634,7 @@
         <h2>Cuenta de Google</h2>
         <span id="googleAccountBadge" class="badge" style="display: none;"></span>
       </div>
-      <div class="subtitle">Conexión con la hoja de cálculo de Google Sheets.</div>
+      <div class="subtitle">Conectá la cuenta de tu planilla.</div>
 
       <div id="googleAccountInfo" style="display: none; margin-bottom: 16px; font-size: var(--fs-body); color: var(--text-muted);">
         Conectado como <strong id="googleAccountEmail" style="color: var(--text-main);"></strong>
@@ -640,14 +644,14 @@
         <button type="button" class="btn-save" id="btnConnectGoogle">Conectar cuenta</button>
         <button type="button" class="btn-danger" id="btnDisconnectGoogle" style="display: none;">Cerrar sesión</button>
       </div>
-      <div id="googleStatus" class="status-msg"></div>
+      <div id="googleStatus" class="status-msg" role="status" aria-live="polite"></div>
     </div>
 
     <div class="card">
       <div class="header-with-badge">
         <h2>Gestión de semanas</h2>
       </div>
-      <div class="subtitle">Alta de nuevas semanas con sus fórmulas en el panel de progreso de Google Sheets.</div>
+      <div class="subtitle">Añadí una semana a tu planilla.</div>
 
       <form id="weekForm">
         <div class="form-group">
@@ -659,9 +663,12 @@
         </div>
         <button type="submit" class="btn-save" id="btnCreateWeek">Añadir semana a Google Sheets</button>
       </form>
-      <div id="weekStatus" class="status-msg"></div>
+      <div id="weekStatus" class="status-msg" role="status" aria-live="polite"></div>
     </div>
   </div>
+  <script src="extension.js"></script>
+  <script src="oauth-config.js"></script>
+  <script src="google-auth.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Log — Progreso</title>
+  <link rel="icon" href="icons/toolbar32.png" type="image/png">
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    body {
+      margin: 0;
+      background: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      scrollbar-color: var(--input-border) var(--bg-color);
+    }
+
+    ::selection { background: var(--accent); color: var(--on-accent); }
+
+    main { max-width: 960px; margin: 0 auto; padding: 48px 24px; }
+    .app-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .app-title { font-size: 1.75rem; font-weight: 300; letter-spacing: -0.03em; }
+    .divider { height: 1px; background: var(--border-color); margin: 20px 0 32px; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    h1 { font-size: 1.25rem; font-weight: 500; letter-spacing: -0.015em; margin: 0 0 4px; }
+    p { margin: 0; color: var(--text-muted); }
+
+    button, a { font: inherit; text-underline-offset: 3px; }
+    a { color: var(--text-muted); }
+    a:hover { color: var(--text-main); }
+
+    button {
+      border: 1px solid var(--input-border);
+      background: var(--input-bg);
+      color: var(--text-main);
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:active:not(:disabled) { background: var(--card-bg); }
+    button:disabled { color: var(--disabled-text); cursor: wait; }
+    button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .text-button { background: none; border: none; color: var(--text-muted); padding: 4px 0; }
+    .text-button:hover:not(:disabled) { color: var(--text-main); text-decoration: underline; }
+
+    .chart-panel { background: var(--card-bg); border-radius: 6px; padding: 24px; min-height: 494px; }
+    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; min-height: 18px; margin-bottom: 20px; font-size: 0.75rem; color: var(--text-muted); }
+    .legend span { display: inline-flex; align-items: center; gap: 8px; }
+    .legend-bar { width: 16px; height: 8px; border-radius: 2px; background: var(--accent); }
+    .legend-goal { width: 20px; border-top: 1.5px dashed var(--text-muted); }
+    .axis-label { font-size: 0.75rem; height: 18px; line-height: 18px; margin-bottom: 12px; }
+    .x-axis-label { text-align: center; margin: 8px 0 0; }
+    .chart-viewport { height: 352px; overflow: hidden; }
+    .chart-svg { display: block; width: 100%; height: 336px; overflow: visible; font-variant-numeric: tabular-nums; }
+    .chart-svg text { font-family: var(--font-sans); font-size: 12px; fill: var(--text-muted); }
+    .chart-svg .count-label { fill: var(--text-main); font-size: 13px; }
+    .bar-fill { fill: var(--accent); }
+    .bar-fill:hover { fill: var(--button-hover, oklch(0.65 0.08 240)); }
+    .grid-line { stroke: var(--border-color); stroke-width: 1; }
+    .axis-line { stroke: var(--input-border); stroke-width: 1; }
+    .goal-marker { stroke: var(--text-muted); stroke-width: 1.5; stroke-dasharray: 5 5; }
+    .chart-footer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 20px; }
+    .chart-footer button { min-height: 36px; font-size: 0.75rem; }
+    .chart-footer button:disabled { cursor: default; }
+    .week-range { text-align: center; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+    .updated { margin-top: 16px; font-size: 0.75rem; }
+    .status { padding: 24px 0; color: var(--text-muted); }
+    .status.error { color: var(--error-text); }
+    .recovery { margin-top: 12px; }
+
+    .progress-loading { display: grid; place-items: center; }
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--border-color);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+    @media (max-width: 540px) {
+      main { padding: 24px 16px; }
+      .chart-panel { padding: 16px 12px; min-height: 478px; }
+      .page-header { align-items: flex-start; }
+      h1 { font-size: 1.125rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="app-header">
+      <span class="app-title">Job Log</span>
+      <button id="openOptions" class="text-button">Configuración</button>
+    </header>
+    <div class="divider"></div>
+
+    <div class="page-header">
+      <div>
+        <h1>Progreso semanal</h1>
+        <p>Postulaciones y meta de cada semana.</p>
+      </div>
+      <button id="refreshProgress" disabled>Actualizar</button>
+    </div>
+
+    <p id="progressStatus" class="sr-only" role="status" aria-live="polite">Cargando tu progreso…</p>
+    <p id="progressRecovery" class="recovery" hidden><a id="configureProgress" href="options.html">Abrir configuración</a></p>
+
+    <div id="progressLoading" class="chart-panel progress-loading" aria-hidden="true">
+      <span class="spinner"></span>
+    </div>
+
+    <section id="progressChart" class="chart-panel" aria-label="Postulaciones por semana" aria-busy="true" hidden>
+      <div class="legend" aria-hidden="true">
+        <span><i class="legend-bar"></i>Postulaciones</span>
+        <span><i class="legend-goal"></i>Meta</span>
+      </div>
+      <p class="axis-label" aria-hidden="true">Postulaciones</p>
+      <div class="chart-viewport">
+        <svg id="progressPlot" class="chart-svg" role="img" aria-labelledby="plotTitle plotDescription">
+          <title id="plotTitle">Postulaciones por semana</title>
+          <desc id="plotDescription">Cada columna muestra las postulaciones de una semana. La línea punteada indica la meta. Los valores también están disponibles en la tabla.</desc>
+          <g id="progressGraphics"></g>
+        </svg>
+      </div>
+      <p class="axis-label x-axis-label" aria-hidden="true">Semanas</p>
+      <table class="sr-only" aria-label="Postulaciones y metas semanales">
+        <thead>
+          <tr>
+            <th scope="col">Semana</th>
+            <th scope="col">Enviadas</th>
+            <th scope="col">Meta</th>
+          </tr>
+        </thead>
+        <tbody id="progressRows"></tbody>
+      </table>
+    </section>
+    <nav id="chartFooter" class="chart-footer" aria-label="Períodos del progreso semanal" hidden>
+      <button id="previousWeeks" disabled>Anterior</button>
+      <p id="weekRange" class="week-range" role="status" aria-live="polite" aria-atomic="true"></p>
+      <button id="nextWeeks" disabled>Siguiente</button>
+    </nav>
+    <p id="progressUpdated" class="updated" hidden></p>
+  </main>
+  <script src="extension.js"></script>
+  <script src="oauth-config.js"></script>
+  <script src="google-auth.js"></script>
+  <script src="progress.js"></script>
+</body>
+</html>

@@ -3,14 +3,8 @@ old=$(git show origin/main:manifest.json 2>/dev/null | grep -o '"version"[^,]*' 
 new=$(grep -o '"version"[^,]*' manifest.json | cut -d'"' -f4)
 [ -z "$old" ] && exit 0
 
-nv=$(grep -o '"version"[^,]*' notice.json | cut -d'"' -f4)
-if [ "$nv" != "$new" ]; then
-    echo "❌ notice.json dice $nv y manifest.json dice $new. Tienen que coincidir."
-    exit 1
-fi
-
 if [ "$old" = "$new" ] &&
-   git diff --name-only origin/main..HEAD | grep -qvE '^(README|PRIVACY|TERMS|CLAUDE)\.md$|^docs/|^hooks/|^notice\.json$'; then
+   git diff --name-only origin/main..HEAD | grep -qvE '^(README|PRIVACY|TERMS|CLAUDE)\.md$|^docs/|^hooks/'; then
     echo "❌ Cambió código pero manifest.json sigue en $new."
     echo "   Bumpeá \"version\" (o 'git push --no-verify' si de verdad no hace falta)."
     exit 1

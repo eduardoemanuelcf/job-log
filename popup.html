@@ -1,43 +1,24 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Job Log</title>
   <link rel="icon" href="icons/toolbar32.png" type="image/png">
+  <link rel="stylesheet" href="theme.css">
   <style>
     :root {
 
-      --bg-color: oklch(0.19 0.006 240);
-      --card-bg: oklch(0.24 0.008 240);
-      --input-bg: oklch(0.15 0.005 240);
-      --border-color: oklch(0.31 0.010 240);
-      --input-border: oklch(0.39 0.012 240);
-      --text-main: oklch(0.93 0.004 240);
-      --text-muted: oklch(0.66 0.008 240);
-      --text-faint: oklch(0.42 0.008 240);
 
-      --accent: oklch(0.60 0.07 240);
-      --on-accent: oklch(0.15 0.005 240);
-      --focus-ring: rgba(96, 138, 166, 0.20);
 
       --button-bg: oklch(0.60 0.07 240);
       --button-text: oklch(0.15 0.005 240);
       --button-hover: oklch(0.65 0.08 240);
       --button-press: oklch(0.55 0.06 240);
 
-      --success-bg: oklch(0.24 0.03 145);
-      --success-border: oklch(0.30 0.04 145);
-      --success-text: oklch(0.75 0.11 145);
 
-      --error-bg: oklch(0.22 0.03 25);
-      --error-border: oklch(0.28 0.04 25);
-      --error-text: oklch(0.67 0.13 25);
 
-      --disabled-bg: oklch(0.26 0.006 240);
-      --disabled-border: oklch(0.29 0.006 240);
-      --disabled-text: oklch(0.48 0.006 240);
 
-      --font-sans: 'SF Pro Display', 'Switzer', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
       --fs-title: 1.625rem;
       --fs-body: 0.8125rem;
@@ -227,7 +208,7 @@
     }
 
     .semana-label {
-      font-size: var(--fs-xs);
+      font-size: var(--fs-caption);
       font-weight: var(--fw-medium);
       margin-bottom: 6px;
       color: var(--text-muted);
@@ -339,12 +320,81 @@
       * { transition: none !important; }
     }
 
+    .privacy-note {
+      margin: 0;
+      font-size: var(--fs-small);
+      line-height: 1.5;
+      color: var(--text-muted);
+    }
+
+    .privacy-note a { color: inherit; }
+
+    .note-section {
+      width: 100%;
+      margin-bottom: 16px;
+      font-size: var(--fs-small);
+      color: var(--text-muted);
+    }
+
+    .note-section summary {
+      padding: 4px 0;
+    }
+
+    .note-section summary:focus-visible, .footer a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 2px;
+    }
+
+    .note-section textarea {
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      margin-top: 10px;
+      min-height: 76px;
+      max-height: 160px;
+      resize: vertical;
+      padding: 10px 12px;
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      background: var(--input-bg);
+      color: var(--text-main);
+      font: inherit;
+      line-height: 1.5;
+      caret-color: var(--accent);
+    }
+
+    .note-section textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .note-section textarea:disabled { opacity: 0.65; }
+    .note-section textarea::placeholder { color: var(--text-muted); }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .footer-links a {
+      color: var(--text-muted);
+      font-size: var(--fs-small);
+      text-decoration: none;
+    }
+
+    .footer-links a:hover { color: var(--text-main); text-decoration: underline; }
+
     .footer {
       border-top: 1px solid var(--border-color);
       padding: 12px;
       display: flex;
       justify-content: center;
       align-items: center;
+      flex-direction: column;
+      gap: 8px;
       background-color: var(--input-bg);
     }
 
@@ -411,13 +461,6 @@
       <h1>Job Log</h1>
     </div>
 
-    <div id="updateBanner" class="auth-banner">
-      <span class="auth-banner-icon">⬆</span>
-      <span class="auth-banner-text" id="updateBannerText"></span>
-      <button class="auth-banner-action" id="updateBannerAction">Cómo actualizar</button>
-      <button class="auth-banner-action" id="updateBannerDismiss" style="display:none">×</button>
-    </div>
-
     <div id="authBanner" class="auth-banner">
       <span class="auth-banner-icon" id="authBannerIcon"></span>
       <span class="auth-banner-text" id="authBannerText"></span>
@@ -433,15 +476,20 @@
           </select>
         </div>
 
+        <details id="noteSection" class="note-section">
+          <summary class="disclosure-toggle">Nota opcional<svg class="disclosure-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+          <textarea id="applicationNote" rows="3" maxlength="2000" placeholder="Algo para recordar" aria-label="Nota opcional"></textarea>
+        </details>
+
         <button id="btnPostular" disabled>Registrar postulación</button>
         <div class="status-area">
-          <div id="status" class="status-text"></div>
+          <div id="status" class="status-text" role="status" aria-live="polite"></div>
         </div>
       </div>
 
       <div id="configRequiredArea" class="area-container">
         <div class="config-message">
-          Se requiere configurar la API Key de Gemini (o Groq) y la URL de Google Sheets en las opciones de la extensión.
+          Configurá Gemini o Groq, tu planilla de Google Sheets y revisá el uso de datos para empezar.
         </div>
         <button id="btnConfigurar">Configurar Job Log</button>
       </div>
@@ -449,10 +497,17 @@
 
     <div class="footer">
       <button id="openOptions" class="btn-secondary">Configuración</button>
+      <nav class="footer-links" aria-label="Más opciones">
+        <a href="progress.html" target="_blank" rel="noopener">Ver progreso</a>
+        <a href="https://job-log.emanuelcabral.dev/privacy" target="_blank" rel="noopener noreferrer">Privacidad</a>
+      </nav>
     </div>
   </div>
 
   <script src="popup-progress.js"></script>
+  <script src="extension.js"></script>
+  <script src="oauth-config.js"></script>
+  <script src="google-auth.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

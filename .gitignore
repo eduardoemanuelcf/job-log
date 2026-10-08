@@ -5,6 +5,11 @@
 .opencode/
 skills-lock.json
 
+dist/
+
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+.playwright-cli/
+output/playwright/

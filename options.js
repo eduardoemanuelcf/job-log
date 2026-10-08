@@ -1,239 +1,3 @@
-const withTimeout = (promise, ms, errorMessage) => {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(errorMessage));
-        }, ms);
-        promise
-            .then((res) => {
-                clearTimeout(timer);
-                resolve(res);
-            })
-            .catch((err) => {
-                clearTimeout(timer);
-                reject(err);
-            });
-    });
-};
-
-const getGoogleAccessToken = async () => {
-    const cached = await new Promise((resolve) => {
-        chrome.storage.local.get(['google_access_token', 'google_token_expires_at'], (result) => {
-            resolve(result || {});
-        });
-    });
-
-    if (cached.google_access_token && cached.google_token_expires_at && cached.google_token_expires_at > Date.now() + 120000) {
-        return cached.google_access_token;
-    }
-
-    const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave();
-    if (isBrave) {
-        return getAccessTokenViaWebFlow(true);
-    }
-
-    try {
-        const token = await new Promise((resolve, reject) => {
-            chrome.identity.getAuthToken({ interactive: false }, (t) => {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                } else {
-                    resolve(t);
-                }
-            });
-        });
-        if (token) {
-            chrome.storage.local.set({
-                google_access_token: token,
-                google_token_expires_at: Date.now() + 3500 * 1000
-            });
-            chrome.storage.local.remove(['user_disconnected']);
-        }
-        return token;
-    } catch (err) {
-        try {
-            const token = await new Promise((resolve, reject) => {
-                chrome.identity.getAuthToken({ interactive: true }, (t) => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                    } else {
-                        resolve(t);
-                    }
-                });
-            });
-            if (token) {
-                chrome.storage.local.set({
-                    google_access_token: token,
-                    google_token_expires_at: Date.now() + 3500 * 1000
-                });
-                chrome.storage.local.remove(['user_disconnected']);
-            }
-            return token;
-        } catch (interactiveErr) {
-            return getAccessTokenViaWebFlow(true);
-        }
-    }
-};
-
-const loginHintParam = async () => {
-    const stored = await new Promise((resolve) => {
-        chrome.storage.local.get(['google_account_email'], (result) => resolve(result || {}));
-    });
-    return stored.google_account_email
-        ? `&login_hint=${encodeURIComponent(stored.google_account_email)}`
-        : '';
-};
-
-const getAccessTokenViaWebFlow = async (interactive, forceSelectAccount = false) => {
-    const manifest = chrome.runtime.getManifest();
-    const clientId = manifest.oauth2.client_id;
-    const scopes = [...manifest.oauth2.scopes, 'email'].join(' ');
-    const redirectUri = chrome.identity.getRedirectURL();
-
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        `client_id=${encodeURIComponent(clientId)}&` +
-        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-        `response_type=token&` +
-        `scope=${encodeURIComponent(scopes)}`;
-
-    const launch = (url, isInteractive) => new Promise((resolve, reject) => {
-        chrome.identity.launchWebAuthFlow({ url, interactive: isInteractive }, (redirectUrl) => {
-            if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message));
-                return;
-            }
-            if (!redirectUrl) {
-                reject(new Error('No se recibio la URL de redireccion.'));
-                return;
-            }
-            resolve(extractAndCacheToken(redirectUrl));
-        });
-    });
-
-    if (forceSelectAccount) {
-        return launch(`${authUrl}&prompt=select_account`, true);
-    }
-
-    try {
-        return await launch(`${authUrl}&prompt=none${await loginHintParam()}`, false);
-    } catch (e) {
-        if (!interactive) {
-            throw e;
-        }
-        return launch(authUrl, true);
-    }
-};
-
-const extractAndCacheToken = async (redirectUrl) => {
-    try {
-        const params = new URLSearchParams(redirectUrl.split('#')[1]);
-        const accessToken = params.get('access_token');
-        const expiresIn = params.get('expires_in') || '3600';
-        
-        if (accessToken) {
-            const expiresAt = Date.now() + parseInt(expiresIn, 10) * 1000;
-            await new Promise((res) => {
-                chrome.storage.local.set({
-                    google_access_token: accessToken,
-                    google_token_expires_at: expiresAt
-                }, res);
-            });
-            chrome.storage.local.remove(['user_disconnected']);
-            const email = await fetchGoogleEmail(accessToken);
-            if (email) {
-                chrome.storage.local.set({ google_account_email: email });
-            }
-            return accessToken;
-        } else {
-            throw new Error('No se pudo extraer el token.');
-        }
-    } catch (e) {
-        throw new Error(`Error al procesar la respuesta: ${e.message}`);
-    }
-};
-
-const sheetsError = async (response, contexto) => {
-    const body = await response.json().catch(() => null);
-    const detalle = body?.error?.message || '';
-    const codigo = body?.error?.status || '';
-    return new Error(`${contexto} (${response.status}${codigo ? ' ' + codigo : ''}): ${detalle}`);
-};
-
-const fetchGoogleEmail = async (token) => {
-    try {
-        const res = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${encodeURIComponent(token)}`);
-        if (!res.ok) return '';
-        const data = await res.json().catch(() => ({}));
-        return data.email || '';
-    } catch (_) {
-        return '';
-    }
-};
-
-const checkGoogleAuthStatus = async () => {
-    const storage = await new Promise((resolve) => {
-        chrome.storage.local.get(
-            ['user_disconnected', 'google_access_token', 'google_token_expires_at', 'google_account_email'],
-            (result) => resolve(result || {})
-        );
-    });
-
-    if (storage.user_disconnected) {
-        return { isConnected: false };
-    }
-
-    if (storage.google_access_token && storage.google_token_expires_at && storage.google_token_expires_at > Date.now() + 120000) {
-        return {
-            isConnected: true,
-            token: storage.google_access_token,
-            email: storage.google_account_email || ''
-        };
-    }
-
-    const isBrave = navigator.brave && typeof navigator.brave.isBrave === 'function' && await navigator.brave.isBrave();
-    if (isBrave) {
-        try {
-            const token = await getAccessTokenViaWebFlow(false);
-            return { isConnected: true, token, email: storage.google_account_email || '' };
-        } catch (_) {
-            return { isConnected: false };
-        }
-    }
-
-    try {
-        const token = await new Promise((resolve, reject) => {
-            chrome.identity.getAuthToken({ interactive: false }, (t) => {
-                if (chrome.runtime.lastError || !t) {
-                    reject(chrome.runtime.lastError || new Error('Sin token'));
-                } else {
-                    resolve(t);
-                }
-            });
-        });
-        if (token) {
-            chrome.storage.local.set({
-                google_access_token: token,
-                google_token_expires_at: Date.now() + 3500 * 1000
-            });
-            return { isConnected: true, token, email: storage.google_account_email || '' };
-        }
-        return { isConnected: false };
-    } catch (_) {
-        return { isConnected: false };
-    }
-};
-
-const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'ai_provider', 'spreadsheet_id', 'cv_goal', 'current_week'];
-
-const loadConfig = async () => {
-    const synced = await new Promise((resolve) => {
-        chrome.storage.sync.get(CONFIG_KEYS, (r) => resolve(r || {}));
-    });
-    const local = await new Promise((resolve) => {
-        chrome.storage.local.get(CONFIG_KEYS, (r) => resolve(r || {}));
-    });
-    return { ...local, ...synced };
-};
-
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const data = await loadConfig();
@@ -254,6 +18,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('cvGoal').value = '25';
         }
 
+        document.getElementById('privacyConsent').checked = data.privacy_consent === true;
+        document.getElementById('privacyDisclosure').open = data.privacy_consent !== true;
         updateGoogleAccountUI();
 
     } catch (err) {
@@ -276,11 +42,10 @@ const setupTogglePassword = (inputId, buttonId) => {
     button.addEventListener('click', () => {
         if (input.type === 'password') {
             input.type = 'text';
-            button.innerHTML = eyeSvg;
         } else {
             input.type = 'password';
-            button.innerHTML = eyeOffSvg;
         }
+        button.replaceChildren(new DOMParser().parseFromString(input.type === 'password' ? eyeOffSvg : eyeSvg, 'image/svg+xml').documentElement);
     });
 };
 
@@ -314,6 +79,11 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
     const cvGoal = document.getElementById('cvGoal').value.trim() || '25';
     const status = document.getElementById('status');
 
+    if (!document.getElementById('privacyConsent').checked) {
+        status.className = 'status-msg error';
+        status.textContent = 'Aceptá el uso de datos para guardar la configuración.';
+        return;
+    }
     if (!geminiApiKey && !groqApiKey) {
         status.className = 'status-msg error';
         status.textContent = 'Debes ingresar al menos una API Key (Gemini o Groq)';
@@ -329,6 +99,11 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
 
     const match = spreadsheetIdInput.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     const spreadsheetId = match ? match[1].trim() : spreadsheetIdInput.trim();
+    if (!/^[a-zA-Z0-9_-]+$/.test(spreadsheetId) || !/^\d+$/.test(cvGoal) || !Number.isSafeInteger(Number(cvGoal)) || Number(cvGoal) < 1) {
+        status.className = 'status-msg error';
+        status.textContent = 'Ingresá una URL o ID válido de Google Sheets y un objetivo entero mayor que cero.';
+        return;
+    }
 
     btnSave.disabled = true;
     btnSave.textContent = 'Guardando...';
@@ -340,7 +115,8 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
                 groq_api_key: groqApiKey,
                 ai_provider: aiProvider,
                 spreadsheet_id: spreadsheetId,
-                cv_goal: cvGoal
+                cv_goal: cvGoal,
+                privacy_consent: true
             }, () => {
                 if (chrome.runtime.lastError) {
                     reject(chrome.runtime.lastError);
@@ -350,6 +126,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
             });
         });
 
+        document.getElementById('privacyDisclosure').open = false;
         let sheetWarning = null;
         try {
             const token = await getGoogleAccessToken();
@@ -651,7 +428,7 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
             range: `'${exactProgresoTitle}'!A${rowNumber}:I${rowNumber}`,
             majorDimension: 'ROWS',
             values: [
-                [newWeekName, countifFormula, goalFormula, diffFormula, complianceFormula, statusFormula, enProcesoFormula, noAvanzaronFormula, entrevistaFormula]
+                [newWeekName.replace(/^([=+\-@])/, "'$1"), countifFormula, goalFormula, diffFormula, complianceFormula, statusFormula, enProcesoFormula, noAvanzaronFormula, entrevistaFormula]
             ]
         };
 
@@ -843,13 +620,8 @@ document.getElementById('btnConnectGoogle').addEventListener('click', async () =
     status.textContent = '';
 
     try {
-        await new Promise(r => chrome.storage.local.remove(['user_disconnected'], r));
         const token = await getAccessTokenViaWebFlow(true, true);
         if (token) {
-            const email = await fetchGoogleEmail(token);
-            if (email) {
-                await new Promise(r => chrome.storage.local.set({ google_account_email: email }, r));
-            }
             status.className = 'status-msg success';
             status.textContent = 'Cuenta conectada correctamente.';
             await updateGoogleAccountUI();
@@ -878,42 +650,7 @@ document.getElementById('btnDisconnectGoogle').addEventListener('click', async (
     status.textContent = '';
 
     try {
-        const cached = await new Promise((resolve) => {
-            chrome.storage.local.get(['google_access_token'], resolve);
-        });
-
-        await new Promise((resolve) => {
-            chrome.storage.local.remove(['google_access_token', 'google_token_expires_at', 'google_account_email'], resolve);
-        });
-        await new Promise((resolve) => {
-            chrome.storage.local.set({ user_disconnected: true }, resolve);
-        });
-
-        if (cached && cached.google_access_token) {
-            try {
-                await new Promise((resolve) => {
-                    chrome.identity.removeCachedAuthToken({ token: cached.google_access_token }, resolve);
-                });
-            } catch (e) {
-                console.warn('Error clearing cached web token:', e);
-            }
-        }
-
-        try {
-            chrome.identity.getAuthToken({ interactive: false }, (t) => {
-                if (t) {
-                    chrome.identity.removeCachedAuthToken({ token: t }, () => {});
-                }
-            });
-        } catch (e) {
-            console.warn('Error clearing primary profile cached token:', e);
-        }
-
-        try {
-            await new Promise(r => chrome.identity.clearAllCachedAuthTokens(r));
-        } catch (e) {
-            console.warn('Error clearing all cached auth tokens:', e);
-        }
+        await disconnectGoogle();
 
         status.className = 'status-msg success';
         status.textContent = 'Sesión cerrada correctamente.';
