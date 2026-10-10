@@ -37,7 +37,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
             getElementById(id) { assert(elements.has(id), `Missing DOM node: ${id}`); return elements.get(id); },
             createElement: node,
             createElementNS: node,
-            querySelector: () => ({ value: 'gemini' }),
+            querySelector: () => ({ value: elements.get('aiGroq')?.checked ? 'groq' : 'gemini' }),
             addEventListener(name, fn) { if (name === 'DOMContentLoaded') ready = fn; }
         },
         chrome: {
@@ -393,7 +393,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         completed.elements.get('geminiApiKey').value = 'updated-key';
         await completed.elements.get('configForm').handlers.submit({ preventDefault() {} });
         assert.equal(sync.gemini_api_key, 'updated-key');
-        assert.equal(completed.elements.get('status').textContent, 'Claves guardadas.');
+        assert.equal(completed.elements.get('status').textContent, 'Claves guardadas · Gemini.');
         assert(!completed.elements.get('aiStepContent').hidden, 'Saving preferences must not collapse normal settings');
         completed.elements.get('cvGoal').value = '35';
         await completed.elements.get('goalForm').handlers.submit({ preventDefault() {} });
@@ -417,6 +417,34 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert(!legacy.elements.get('aiStepContent').hidden);
         assert(!legacy.elements.get('googleStepContent').hidden);
         assert(!legacy.elements.get('goalStepContent').hidden);
+    }
+
+    for (const firefox of [false, true]) {
+        for (const completed of [false, true]) {
+            const sync = completed ? { setup_completed: true } : {};
+            const preferences = popup('options.js', sync, {}, firefox);
+            await preferences.ready();
+            preferences.elements.get('aiGroq').checked = true;
+            preferences.elements.get('groqApiKey').value = 'saved-groq-key';
+            preferences.elements.get('privacyConsent').checked = true;
+            await preferences.elements.get('configForm').handlers.submit({ preventDefault() {} });
+            assert.equal(sync.groq_api_key, 'saved-groq-key');
+            assert.equal(sync.ai_provider, 'groq');
+            assert.equal(preferences.elements.get('aiSummaryText').textContent, 'Claves guardadas · Groq');
+            assert.equal(preferences.elements.get(completed ? 'aiStepContent' : 'aiStepSummary').hidden, false);
+            if (completed) {
+                assert.equal(preferences.elements.get('status').className, 'status-msg success');
+                assert.equal(preferences.elements.get('status').textContent, 'Claves guardadas · Groq.');
+            }
+            preferences.elements.get('geminiApiKey').value = 'saved-gemini-key';
+            preferences.elements.get('aiGroq').checked = false;
+            await preferences.elements.get('configForm').handlers.submit({ preventDefault() {} });
+            assert.equal(sync.ai_provider, 'gemini');
+            assert.equal(sync.groq_api_key, 'saved-groq-key');
+            assert.equal(preferences.elements.get('aiSummaryText').textContent, 'Claves guardadas · Gemini y Groq', 'Confirm every saved key, including the backup provider');
+            if (completed) assert.equal(preferences.elements.get('status').textContent, 'Claves guardadas · Gemini y Groq.');
+            assert.equal(preferences.calls.length, 0, 'Saving AI keys must not send them to any API');
+        }
     }
 
     for (const firefox of [false, true]) {

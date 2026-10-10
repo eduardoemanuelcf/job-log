@@ -79,7 +79,8 @@ const renderSetup = () => {
     document.getElementById('goalStepHeading').textContent = expanded ? 'Objetivo semanal' : '3. Elegir el objetivo semanal';
     document.getElementById('aiStepContent').hidden = !expanded && activeStep !== 1;
     document.getElementById('aiStepSummary').hidden = expanded || !aiReady || activeStep === 1;
-    document.getElementById('aiSummaryText').textContent = `Claves guardadas · ${setupConfig.ai_provider === 'groq' ? 'Groq' : 'Gemini'}`;
+    const savedProviders = [setupConfig.gemini_api_key && 'Gemini', setupConfig.groq_api_key && 'Groq'].filter(Boolean).join(' y ');
+    document.getElementById('aiSummaryText').textContent = `Claves guardadas · ${savedProviders}`;
     document.getElementById('googleAccountCard').hidden = !expanded && (!aiReady || (activeStep === 1 && !sheetReady));
     document.getElementById('googleStepContent').hidden = !expanded && activeStep !== 2;
     document.getElementById('googleStepSummary').hidden = expanded || !sheetReady || activeStep === 2;
@@ -203,7 +204,8 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
         setupConfig = await loadConfig();
         document.getElementById('privacyDisclosure').open = false;
         status.className = setupConfig.setup_completed ? 'status-msg success' : 'status-msg';
-        status.textContent = setupConfig.setup_completed ? 'Claves guardadas.' : '';
+        const savedProviders = [setupConfig.gemini_api_key && 'Gemini', setupConfig.groq_api_key && 'Groq'].filter(Boolean).join(' y ');
+        status.textContent = setupConfig.setup_completed ? `Claves guardadas · ${savedProviders}.` : '';
         editingStep = 0;
         renderSetup();
         if (!setupConfig.setup_completed && !googleAuthorizedSpreadsheetId) document.getElementById('googleStepHeading').focus();
