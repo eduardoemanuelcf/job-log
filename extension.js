@@ -25,7 +25,7 @@ const sheetsError = async (response, contexto) => {
 };
 
 
-const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'ai_provider', 'spreadsheet_id', 'cv_goal', 'cv_goal_spreadsheet_id', 'current_week', 'privacy_consent'];
+const CONFIG_KEYS = ['gemini_api_key', 'groq_api_key', 'ai_provider', 'spreadsheet_id', 'cv_goal', 'cv_goal_spreadsheet_id', 'current_week', 'privacy_consent', 'setup_completed'];
 
 const hasConfiguredAI = config => config.privacy_consent === true && Boolean(config.ai_provider === 'groq' ? config.groq_api_key : config.gemini_api_key);
 

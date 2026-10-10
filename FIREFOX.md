@@ -23,11 +23,11 @@ La instalación disponible desde este repositorio es temporal: se elimina al cer
 3. Pulsá **Autorizar planilla** y seleccioná tu copia en Google: queda guardada automáticamente. Job Log solicita acceso solo a los archivos que autorizás para la app con `drive.file`.
 
    Si todavía no tenés tu copia, abrí el enlace **plantilla de Job Log** en **Conectar tu planilla**, pulsá **Utilizar plantilla** en Google y volvé a la configuración para autorizarla.
-4. En **Elegir el objetivo semanal**, elegí cuántos CVs querés enviar por semana y pulsá **Guardar objetivo**. Cuando se guarda en Sheets y en la configuración, Job Log indica que está listo.
+4. En **Elegir el objetivo semanal**, elegí cuántos CVs querés enviar por semana y pulsá **Guardar objetivo**. Cuando se guarda en Sheets y en la configuración, Job Log indica que está listo. El aviso aparece solo al completar la configuración inicial y desaparece al refrescar o volver a abrir la página.
 5. Abrí una oferta de empleo, pulsá el icono de Job Log, elegí la semana y seleccioná **Registrar postulación**. Podés añadir una nota opcional.
 6. Pulsá **Ver progreso** para consultar tus postulaciones y metas semanales.
 
-Los pasos completados permiten **Editar claves**, **Cambiar planilla** y **Editar objetivo**. Al elegir otra planilla, confirmá el objetivo para esa selección. **Abrir planilla** abre la selección actual; **Ver cuenta** permite consultar la cuenta conectada o cerrar sesión.
+El asistente aparece solo durante la configuración inicial. Después, las secciones quedan desplegadas para editar las claves, cambiar la planilla y guardar el objetivo directamente. **Abrir planilla** abre la selección actual y **Cerrar sesión** permite desconectar la cuenta. Al elegir otra planilla, confirmá el objetivo para esa selección; el asistente no vuelve a aparecer.
 
 Si Sheets no permite guardar el objetivo, aparece una advertencia y tus claves y selección se conservan. Revisá la conexión y pulsá **Guardar objetivo** para reintentar. La configuración retoma el paso pendiente al volver a abrirla y conserva los ajustes existentes.
 

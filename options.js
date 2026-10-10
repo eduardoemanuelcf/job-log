@@ -1,9 +1,10 @@
 let configuredSpreadsheetId = '';
 let setupConfig = {};
 let editingStep = 0;
+let setupJustCompleted = false;
 
 const setSetupBusy = busy => {
-    for (const id of ['btnSave', 'btnSaveGoal', 'btnConnectGoogle', 'btnDisconnectGoogle', 'btnEditAI', 'btnEditSheet', 'btnEditGoal', 'btnShowGoogle', 'btnCancelEdit']) {
+    for (const id of ['btnSave', 'btnSaveGoal', 'btnCreateWeek', 'btnConnectGoogle', 'btnDisconnectGoogle', 'btnEditAI', 'btnEditSheet', 'btnEditGoal', 'btnShowGoogle', 'btnCancelEdit']) {
         document.getElementById(id).disabled = busy;
     }
 };
@@ -71,20 +72,25 @@ const renderSetup = () => {
     const sheetReady = aiReady && /^[a-zA-Z0-9_-]+$/.test(configuredSpreadsheetId) && configuredSpreadsheetId === googleAuthorizedSpreadsheetId;
     const goalReady = sheetReady && hasConfiguredGoal(setupConfig);
     const pendingStep = !aiReady ? 1 : !sheetReady ? 2 : !goalReady ? 3 : 0;
-    const activeStep = editingStep || pendingStep;
-    document.getElementById('aiStepContent').hidden = activeStep !== 1;
-    document.getElementById('aiStepSummary').hidden = !aiReady || activeStep === 1;
+    const expanded = setupConfig.setup_completed === true;
+    const activeStep = expanded ? 0 : editingStep || pendingStep;
+    document.getElementById('aiStepHeading').textContent = expanded ? 'Configuración de la IA' : '1. Configurar la IA';
+    document.getElementById('googleStepHeading').textContent = expanded ? 'Cuenta de Google' : '2. Conectar tu planilla';
+    document.getElementById('goalStepHeading').textContent = expanded ? 'Objetivo semanal' : '3. Elegir el objetivo semanal';
+    document.getElementById('aiStepContent').hidden = !expanded && activeStep !== 1;
+    document.getElementById('aiStepSummary').hidden = expanded || !aiReady || activeStep === 1;
     document.getElementById('aiSummaryText').textContent = `Claves guardadas · ${setupConfig.ai_provider === 'groq' ? 'Groq' : 'Gemini'}`;
-    document.getElementById('googleAccountCard').hidden = !aiReady || (activeStep === 1 && !sheetReady);
-    document.getElementById('googleStepContent').hidden = activeStep !== 2;
-    document.getElementById('googleStepSummary').hidden = !sheetReady || activeStep === 2;
-    document.getElementById('goalCard').hidden = !sheetReady;
-    document.getElementById('goalStepContent').hidden = activeStep !== 3;
-    document.getElementById('goalStepSummary').hidden = !goalReady || activeStep === 3;
+    document.getElementById('googleAccountCard').hidden = !expanded && (!aiReady || (activeStep === 1 && !sheetReady));
+    document.getElementById('googleStepContent').hidden = !expanded && activeStep !== 2;
+    document.getElementById('googleStepSummary').hidden = expanded || !sheetReady || activeStep === 2;
+    document.getElementById('goalCard').hidden = !expanded && !sheetReady;
+    document.getElementById('goalStepContent').hidden = !expanded && activeStep !== 3;
+    document.getElementById('goalStepSummary').hidden = expanded || !goalReady || activeStep === 3;
     document.getElementById('goalSummaryText').textContent = `Objetivo guardado · ${setupConfig.cv_goal} CVs por semana`;
-    document.getElementById('weeksCard').hidden = !goalReady || activeStep !== 0;
-    document.getElementById('setupComplete').hidden = !goalReady || activeStep !== 0;
-    document.getElementById('btnCancelEdit').hidden = !editingStep || editingStep === pendingStep;
+    document.getElementById('weeksCard').hidden = !expanded && (!goalReady || activeStep !== 0);
+    document.getElementById('setupComplete').hidden = !setupJustCompleted || !goalReady;
+    document.getElementById('btnCancelEdit').hidden = expanded || !editingStep || editingStep === pendingStep;
+    document.getElementById('setupProgress').hidden = expanded;
     document.getElementById('setupProgress').textContent = activeStep
         ? `Paso ${activeStep} de 3 · ${['', 'Configurá la IA', 'Conectá tu planilla', 'Elegí tu objetivo semanal'][activeStep]}`
         : 'Configuración completa';
@@ -104,6 +110,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById(data.ai_provider === 'groq' ? 'aiGroq' : 'aiGemini').checked = true;
         const savedSheet = typeof data.spreadsheet_id === 'string' ? data.spreadsheet_id.trim() : '';
         configuredSpreadsheetId = savedSheet.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1] || savedSheet;
+        if (data.setup_completed !== true && hasConfiguredAI(data) && /^[a-zA-Z0-9_-]+$/.test(configuredSpreadsheetId) && hasConfiguredGoal(data)) {
+            await saveConfig({ setup_completed: true });
+            setupConfig.setup_completed = true;
+        }
         if (data.cv_goal) {
             document.getElementById('cvGoal').value = data.cv_goal;
         } else {
@@ -192,11 +202,11 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
         await saveConfig({ gemini_api_key: geminiApiKey, groq_api_key: groqApiKey, ai_provider: aiProvider, privacy_consent: true });
         setupConfig = await loadConfig();
         document.getElementById('privacyDisclosure').open = false;
-        status.className = 'status-msg';
-        status.textContent = '';
+        status.className = setupConfig.setup_completed ? 'status-msg success' : 'status-msg';
+        status.textContent = setupConfig.setup_completed ? 'Claves guardadas.' : '';
         editingStep = 0;
         renderSetup();
-        if (!googleAuthorizedSpreadsheetId) document.getElementById('googleStepHeading').focus();
+        if (!setupConfig.setup_completed && !googleAuthorizedSpreadsheetId) document.getElementById('googleStepHeading').focus();
     } catch (err) {
         console.error('[Job Log Options] No se pudieron guardar las claves:', err);
         status.className = 'status-msg error';
@@ -227,12 +237,18 @@ document.getElementById('goalForm').addEventListener('submit', async (e) => {
     status.className = 'status-msg';
     status.textContent = '';
     try {
+        const firstSetup = setupConfig.setup_completed !== true;
         await syncSpreadsheetGoal(configuredSpreadsheetId, goal);
-        await saveConfig({ spreadsheet_id: configuredSpreadsheetId, cv_goal: goal, cv_goal_spreadsheet_id: configuredSpreadsheetId });
+        await saveConfig({ spreadsheet_id: configuredSpreadsheetId, cv_goal: goal, cv_goal_spreadsheet_id: configuredSpreadsheetId, setup_completed: true });
         setupConfig = await loadConfig();
+        setupJustCompleted = firstSetup;
+        if (!firstSetup) {
+            status.className = 'status-msg success';
+            status.textContent = 'Objetivo guardado.';
+        }
         editingStep = 0;
         renderSetup();
-        document.getElementById('setupComplete').focus();
+        document.getElementById(firstSetup ? 'setupComplete' : 'goalStatus').focus();
     } catch (err) {
         console.warn('[Job Log Options] No se pudo guardar el objetivo:', err);
         status.className = 'status-msg warning';
@@ -277,7 +293,7 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
     const newWeekName = document.getElementById('newWeekName').value.trim();
     const weekStatus = document.getElementById('weekStatus');
 
-    btnCreateWeek.disabled = true;
+    setSetupBusy(true);
     btnCreateWeek.textContent = 'Procesando...';
     weekStatus.className = 'status-msg';
     weekStatus.textContent = '';
@@ -609,7 +625,7 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
         weekStatus.className = 'status-msg error';
         weekStatus.textContent = err.message;
     } finally {
-        btnCreateWeek.disabled = false;
+        setSetupBusy(false);
         btnCreateWeek.textContent = 'Añadir semana a Google Sheets';
     }
 });

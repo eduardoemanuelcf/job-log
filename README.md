@@ -63,9 +63,9 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
    - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
 3. Aceptá el uso de datos y pulsá **Guardar claves**. Las claves y la IA principal quedan guardadas. El primer paso se resume y aparece **Conectar tu planilla**.
 4. Pulsá **Autorizar planilla** y elegí tu copia de la plantilla en el selector de Google. La selección se guarda automáticamente y aparece **Elegir el objetivo semanal**.
-5. Elegí cuántos CVs querés enviar por semana y pulsá **Guardar objetivo**. Job Log lo guarda en Sheets y en la configuración; después muestra **Job Log está listo para registrar postulaciones**.
+5. Elegí cuántos CVs querés enviar por semana y pulsá **Guardar objetivo**. Job Log lo guarda en Sheets y en la configuración; después muestra **Job Log está listo para registrar postulaciones**. Este aviso aparece solo al completar la configuración inicial y desaparece al refrescar o volver a abrir la página.
 
-Los pasos completados quedan resumidos. Podés **Editar claves**, **Cambiar planilla** y **Editar objetivo**. Al cambiar de planilla, confirmá el objetivo para la nueva selección. **Abrir planilla** abre la selección actual y **Ver cuenta** permite consultar la cuenta conectada o cerrar sesión.
+El asistente aparece solo durante la configuración inicial. Al completar los tres pasos, todas las secciones quedan desplegadas para editar las claves, cambiar la planilla y guardar el objetivo directamente. **Abrir planilla** abre la selección actual y **Cerrar sesión** permite desconectar la cuenta. Al cambiar de planilla, confirmá el objetivo para la nueva selección; el asistente no vuelve a aparecer.
 
 Si falla el guardado del objetivo, tus claves y la planilla seleccionada siguen guardadas. Revisá la conexión y pulsá **Guardar objetivo** para reintentar. El popup indica si falta conectar la planilla o elegir el objetivo. La configuración retoma el paso pendiente al volver a abrirla y conserva los ajustes de quienes ya usaban la extensión.
 

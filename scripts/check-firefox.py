@@ -119,7 +119,8 @@ try:
     command('/moz/context', {'context': 'content'})
     extension_url = f'moz-extension://{uuid}'
     command('/url', {'url': extension_url + '/options.html'})
-    wait_for('document.querySelector("#googleAccountBadge").textContent === "No conectada"')
+    wait_for('!document.querySelector("#aiStepContent").hidden')
+    assert js('return document.querySelector("#googleAccountCard").hidden;')
     assert js('return document.querySelector("#privacyDisclosure").open;')
     assert js('return typeof chrome.identity.getAuthToken;') == 'undefined'
     redirect = 'http://127.0.0.1/mozoauth2/' + js('return new URL(chrome.identity.getRedirectURL()).hostname.split(".")[0];')
@@ -132,6 +133,9 @@ try:
 
     js(mock_fetch)
     js("document.querySelector('#privacyConsent').checked=true;")
+    js("document.querySelector('#configForm').dispatchEvent(new Event('submit',{cancelable:true}));")
+    wait_for('!document.querySelector("#googleStepContent").hidden')
+    assert js('return document.querySelector("#aiStepContent").hidden;')
     js(f'''window.nativeLaunch=chrome.identity.launchWebAuthFlow;
         chrome.identity.launchWebAuthFlow=(options,callback)=>{{
             window.googleOAuthUrl=options.url;
@@ -159,8 +163,10 @@ try:
 
     js('''document.querySelector('#privacyConsent').checked=true;
         document.querySelector('#cvGoal').value='30';
-        document.querySelector('#configForm').dispatchEvent(new Event('submit',{cancelable:true}));''')
-    wait_for('document.querySelector("#status").textContent === "Configuración guardada correctamente"')
+        document.querySelector('#goalForm').dispatchEvent(new Event('submit',{cancelable:true}));''')
+    wait_for('!document.querySelector("#setupComplete").hidden')
+    assert js('return document.querySelector("#setupProgress").hidden;')
+    assert js('return ["aiStepContent","googleStepContent","goalStepContent"].every(id=>!document.getElementById(id).hidden);')
     requests = js('return window.requests;')
     goal = next(item for item in requests if item['options'].get('method') == 'PUT')
     assert json.loads(goal['options']['body'])['values'] == [[30]]
@@ -174,7 +180,8 @@ try:
     assert js('return document.querySelector("#geminiApiKey").type;') == 'password'
     screenshot('options-configured.png')
     js('document.querySelector("#btnDisconnectGoogle").click();')
-    wait_for('document.querySelector("#googleAccountBadge").textContent === "No conectada"')
+    wait_for('document.querySelector("#googleAccountBadge").textContent === "Pendiente"')
+    assert js('return document.querySelector("#setupProgress").hidden;')
     stored = js('const done=arguments[arguments.length-1];chrome.storage.local.get(null,done);', True)
     assert stored['user_disconnected'] and 'google_access_token' not in stored and 'google_account_email' not in stored
     assert 'google_authorized_spreadsheet_id' not in stored
@@ -186,7 +193,9 @@ try:
     session = restarted['sessionId']
     command('/moz/addon/install', {'path': str(archive), 'temporary': True})
     command('/url', {'url': extension_url + '/options.html'})
-    wait_for('document.querySelector("#googleAccountBadge").textContent === "No conectada"')
+    wait_for('document.querySelector("#googleAccountBadge").textContent === "Pendiente"')
+    assert js('return document.querySelector("#setupProgress").hidden;')
+    assert js('return ["aiStepContent","googleStepContent","goalStepContent"].every(id=>!document.getElementById(id).hidden);')
     assert js('return document.querySelector("#geminiApiKey").value;') == 'synthetic-key'
     assert not js('return document.querySelector("#privacyDisclosure").open;')
     network = js('''const done=arguments[arguments.length-1];
