@@ -19,12 +19,12 @@ La instalación disponible desde este repositorio es temporal: se elimina al cer
 ## Configurar y usar
 
 1. Abrí **Job Log → Configuración** desde el menú de extensiones.
-2. Pegá la URL de tu copia de la plantilla y una clave API de Gemini o Groq. Elegí la IA principal y aceptá el uso de datos.
-3. Pulsá **Autorizar planilla**, seleccioná tu copia en Google y guardá la configuración. Job Log solicita acceso solo a los archivos que autorizás para la app con `drive.file`.
+2. Ingresá una clave API de Gemini o Groq. Elegí la IA principal y aceptá el uso de datos.
+3. Pulsá **Autorizar planilla** y seleccioná tu copia en Google: queda guardada automáticamente. Pulsá **Guardar configuración** para aplicar las claves de IA, el proveedor y el objetivo semanal. Job Log solicita acceso solo a los archivos que autorizás para la app con `drive.file`.
 4. Abrí una oferta de empleo, pulsá el icono de Job Log, elegí la semana y seleccioná **Registrar postulación**. Podés añadir una nota opcional.
 5. Pulsá **Ver progreso** para consultar tus postulaciones y metas semanales.
 
-Después de autorizarla, el botón pasa a **Cambiar planilla**. Si editás la URL, vuelve a **Autorizar planilla** para el nuevo archivo.
+Después de autorizarla, el botón pasa a **Cambiar planilla**; la nueva selección también se guarda automáticamente. **Abrir planilla** abre la selección actual en Google Sheets.
 
 Si tu sesión vence, volvé a conectar la cuenta desde Configuración. Firefox Sync no es necesario y la configuración de otros navegadores no se importa automáticamente.
 

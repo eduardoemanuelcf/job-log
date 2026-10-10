@@ -543,6 +543,7 @@
     .privacy-disclosure p { margin: 12px 0; }
     .privacy-links { margin: 0 0 20px; font-size: var(--fs-small); }
     .privacy-links a { color: var(--text-muted); }
+    #googleSpreadsheetLink { margin-top: 6px; font-size: var(--fs-small); color: var(--text-muted); }
     .privacy-disclosure label { text-transform: none; letter-spacing: normal; font-size: var(--fs-body); align-items: flex-start; }
     .privacy-disclosure input { width: auto; margin: 3px 0 0; flex-shrink: 0; }
     a:focus-visible, button:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
@@ -610,15 +611,6 @@
         </div>
 
         <div class="form-group">
-          <label for="spreadsheetId">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            <span>URL de Google Sheets</span>
-          </label>
-          <input type="text" id="spreadsheetId" required autocomplete="off" aria-describedby="spreadsheetHelp">
-          <p class="subtitle" id="spreadsheetHelp">Pegá la URL de tu copia y pulsá Autorizar planilla en Cuenta de Google. Después, guardá la configuración.</p>
-        </div>
-
-        <div class="form-group">
           <label for="cvGoal">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
             <span>Objetivo de CVs por semana</span>
@@ -646,7 +638,10 @@
         <h2>Cuenta de Google</h2>
         <span id="googleAccountBadge" class="badge" style="display: none;"></span>
       </div>
-      <div class="subtitle" id="googleAccountHelp">Elegí tu copia de la planilla en Google para permitir que Job Log la lea y edite.</div>
+      <div class="subtitle">
+        <div id="googleAccountHelp">Pulsá Autorizar planilla y elegí tu copia en Google. La selección se guarda automáticamente.</div>
+        <a id="googleSpreadsheetLink" target="_blank" rel="noopener noreferrer" style="display: none;">Abrir planilla</a>
+      </div>
 
       <div id="googleAccountInfo" style="display: none; margin-bottom: 16px; font-size: var(--fs-body); color: var(--text-muted);">
         Conectado como <strong id="googleAccountEmail" style="color: var(--text-main);"></strong>

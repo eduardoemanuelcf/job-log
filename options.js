@@ -1,26 +1,37 @@
-const getSpreadsheetInputId = () => {
-    const value = document.getElementById('spreadsheetId').value.trim();
-    return value.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1] || value;
+let configuredSpreadsheetId = '';
+
+const saveConfig = async (values) => {
+    const previous = await loadConfig();
+    if (previous.spreadsheet_id !== values.spreadsheet_id) {
+        await new Promise((resolve, reject) => chrome.storage.local.remove(['cached_weeks'], () => {
+            if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+            else resolve();
+        }));
+        await new Promise((resolve, reject) => chrome.storage.sync.remove(['current_week'], () => {
+            if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+            else resolve();
+        }));
+    }
+    await new Promise((resolve, reject) => chrome.storage.sync.set(values, () => {
+        if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+        else resolve();
+    }));
 };
 
 let googleAuthorizedSpreadsheetId = '';
 
 const updateGoogleSpreadsheetAction = () => {
-    const authorized = !!googleAuthorizedSpreadsheetId && getSpreadsheetInputId() === googleAuthorizedSpreadsheetId;
+    const authorized = !!googleAuthorizedSpreadsheetId && configuredSpreadsheetId === googleAuthorizedSpreadsheetId;
     const button = document.getElementById('btnConnectGoogle');
     button.textContent = authorized ? 'Cambiar planilla' : 'Autorizar planilla';
     button.className = authorized ? 'btn-save secondary' : 'btn-save';
     document.getElementById('googleAccountHelp').textContent = authorized
         ? 'La planilla está autorizada. Podés cambiarla cuando lo necesites.'
-        : 'Elegí tu copia de la planilla en Google para permitir que Job Log la lea y edite.';
-    document.getElementById('spreadsheetHelp').textContent = authorized
-        ? 'Esta planilla ya está autorizada. Para elegir otra, pulsá Cambiar planilla.'
-        : 'Pegá la URL de tu copia y pulsá Autorizar planilla en Cuenta de Google. Después, guardá la configuración.';
+        : 'Pulsá Autorizar planilla y elegí tu copia en Google. La selección se guarda automáticamente.';
+    const link = document.getElementById('googleSpreadsheetLink');
+    link.style.display = /^[a-zA-Z0-9_-]+$/.test(configuredSpreadsheetId) ? 'inline-block' : 'none';
+    link.href = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(configuredSpreadsheetId)}/edit`;
 };
-
-document.getElementById('spreadsheetId').addEventListener('input', () => {
-    if (!document.getElementById('btnConnectGoogle').disabled) updateGoogleSpreadsheetAction();
-});
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -33,9 +44,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('groqApiKey').value = data.groq_api_key;
         }
         document.getElementById(data.ai_provider === 'groq' ? 'aiGroq' : 'aiGemini').checked = true;
-        if (data.spreadsheet_id) {
-            document.getElementById('spreadsheetId').value = data.spreadsheet_id;
-        }
+        const savedSheet = typeof data.spreadsheet_id === 'string' ? data.spreadsheet_id.trim() : '';
+        configuredSpreadsheetId = savedSheet.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1] || savedSheet;
         if (data.cv_goal) {
             document.getElementById('cvGoal').value = data.cv_goal;
         } else {
@@ -120,10 +130,15 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
         return;
     }
 
-    const spreadsheetId = getSpreadsheetInputId();
-    if (!/^[a-zA-Z0-9_-]+$/.test(spreadsheetId) || !/^\d+$/.test(cvGoal) || !Number.isSafeInteger(Number(cvGoal)) || Number(cvGoal) < 1) {
+    const spreadsheetId = configuredSpreadsheetId;
+    if (!/^[a-zA-Z0-9_-]+$/.test(spreadsheetId)) {
         status.className = 'status-msg error';
-        status.textContent = 'Ingresá una URL o ID válido de Google Sheets y un objetivo entero mayor que cero.';
+        status.textContent = 'Elegí una planilla con Autorizar planilla antes de guardar la configuración.';
+        return;
+    }
+    if (!/^\d+$/.test(cvGoal) || !Number.isSafeInteger(Number(cvGoal)) || Number(cvGoal) < 1) {
+        status.className = 'status-msg error';
+        status.textContent = 'Ingresá un objetivo entero mayor que cero.';
         return;
     }
 
@@ -131,27 +146,14 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
     btnSave.textContent = 'Guardando...';
 
     try {
-        const previous = await loadConfig();
-        await new Promise((resolve, reject) => {
-            chrome.storage.sync.set({
-                gemini_api_key: geminiApiKey,
-                groq_api_key: groqApiKey,
-                ai_provider: aiProvider,
-                spreadsheet_id: spreadsheetId,
-                cv_goal: cvGoal,
-                privacy_consent: true
-            }, () => {
-                if (chrome.runtime.lastError) {
-                    reject(chrome.runtime.lastError);
-                } else {
-                    resolve();
-                }
-            });
+        await saveConfig({
+            gemini_api_key: geminiApiKey,
+            groq_api_key: groqApiKey,
+            ai_provider: aiProvider,
+            spreadsheet_id: spreadsheetId,
+            cv_goal: cvGoal,
+            privacy_consent: true
         });
-        if (previous.spreadsheet_id !== spreadsheetId) {
-            await new Promise(resolve => chrome.storage.local.remove(['cached_weeks'], resolve));
-            await new Promise(resolve => chrome.storage.sync.remove(['current_week'], resolve));
-        }
 
         document.getElementById('privacyDisclosure').open = false;
         let sheetWarning = null;
@@ -656,17 +658,20 @@ document.getElementById('btnConnectGoogle').addEventListener('click', async () =
         if (!document.getElementById('privacyConsent').checked) {
             throw new Error('Aceptá el uso de datos antes de autorizar la planilla.');
         }
-        const input = document.getElementById('spreadsheetId');
-        const spreadsheetId = getSpreadsheetInputId();
-        const selectedId = await pickGoogleSpreadsheet(spreadsheetId === googleAuthorizedSpreadsheetId ? '' : spreadsheetId);
-        input.value = `https://docs.google.com/spreadsheets/d/${selectedId}/edit`;
+        const selectedId = await pickGoogleSpreadsheet();
+        configuredSpreadsheetId = selectedId;
+        try {
+            await saveConfig({ spreadsheet_id: selectedId, privacy_consent: true });
+        } catch (error) {
+            throw new Error(`La planilla fue autorizada, pero no se pudo guardar. Pulsá Guardar configuración para reintentar. ${error.message}`);
+        }
         status.className = 'status-msg success';
-        status.textContent = 'Planilla autorizada. Guardá la configuración para aplicar los cambios.';
+        status.textContent = 'Planilla autorizada y guardada.';
         await updateGoogleAccountUI();
     } catch (err) {
         console.error('Error connecting account:', err);
         status.className = 'status-msg error';
-        status.textContent = `Error al conectar cuenta: ${err.message}`;
+        status.textContent = `Error: ${err.message}`;
         await updateGoogleAccountUI();
     } finally {
         btn.disabled = false;

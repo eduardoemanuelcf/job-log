@@ -283,11 +283,11 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     }
 
     for (const firefox of [false, true]) {
-        const sync = { spreadsheet_id: 'old-sheet', current_week: 'Semana 5' };
+        const sync = { spreadsheet_id: 'old-sheet', current_week: 'Semana 5', gemini_api_key: 'saved-key', cv_goal: '30' };
         const local = { cached_weeks: ['Semana 5'] };
         const picker = popup('options.js', sync, local, firefox);
-        const input = picker.elements.get('spreadsheetId');
-        input.value = 'https://docs.google.com/spreadsheets/d/new-sheet/edit';
+        assert(!picker.elements.has('spreadsheetId'), 'Choose in Google without a URL input');
+        picker.elements.get('geminiApiKey').value = 'unsaved-key';
         let response = 'new-sheet';
         picker.context.chrome.identity.launchWebAuthFlow = ({ url, interactive }, callback) => {
             const params = new URL(url).searchParams;
@@ -297,33 +297,31 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
             assert.equal(params.get('prompt'), 'consent');
             assert.equal(params.get('include_granted_scopes'), 'false');
             assert.equal(params.get('mimetypes'), 'application/vnd.google-apps.spreadsheet');
-            assert.equal(params.get('file_ids'), 'new-sheet');
+            assert(!params.has('file_ids'), 'Always let the user choose a spreadsheet');
             callback(`${params.get('redirect_uri')}?picked_file_ids=${response}#access_token=picker-token&scope=${encodeURIComponent(googleScope)}&state=${params.get('state')}`);
         };
         await picker.elements.get('btnConnectGoogle').handlers.click();
         assert.equal(picker.writes.length, 0, 'Consent is required before opening Picker');
         picker.elements.get('privacyConsent').checked = true;
-        response = 'different-sheet';
+        response = 'invalid/id';
         await picker.elements.get('btnConnectGoogle').handlers.click();
-        assert.equal(picker.writes.length, 0, 'A different file must not be cached');
-        assert.equal(input.value, 'https://docs.google.com/spreadsheets/d/new-sheet/edit');
+        assert.equal(picker.writes.length, 0, 'An invalid file must not be cached');
+        assert.equal(sync.spreadsheet_id, 'old-sheet');
         response = 'new-sheet';
         await picker.elements.get('btnConnectGoogle').handlers.click();
-        assert.equal(input.value, 'https://docs.google.com/spreadsheets/d/new-sheet/edit');
-        assert.equal(sync.spreadsheet_id, 'old-sheet', 'Selection must wait for Save');
+        assert.equal(sync.spreadsheet_id, 'new-sheet', 'Authorization saves the selection automatically');
+        assert.equal(sync.privacy_consent, true);
+        assert.equal(sync.gemini_api_key, 'saved-key', 'Authorizing a sheet must preserve the saved preferences');
+        assert.equal(sync.cv_goal, '30');
+        assert(!local.cached_weeks && !sync.current_week, 'Authorization must clear the previous spreadsheet weeks');
+        assert.equal(picker.elements.get('googleStatus').textContent, 'Planilla autorizada y guardada.');
+        assert.equal(picker.elements.get('googleSpreadsheetLink').href, 'https://docs.google.com/spreadsheets/d/new-sheet/edit');
         assert.equal(local.google_token_scope, googleScope);
         assert.equal(picker.elements.get('btnConnectGoogle').style.display, 'inline-flex', 'Keep Picker available while connected');
         assert.equal(local.google_authorized_spreadsheet_id, 'new-sheet');
         assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla');
         assert.equal(picker.elements.get('btnConnectGoogle').className, 'btn-save secondary');
         assert(picker.elements.get('googleAccountHelp').textContent.includes('está autorizada'));
-        input.value = 'different-sheet';
-        input.handlers.input();
-        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Autorizar planilla', 'A new URL needs its own authorization');
-        assert.equal(picker.elements.get('btnConnectGoogle').className, 'btn-save');
-        input.value = 'new-sheet';
-        input.handlers.input();
-        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla', 'An ID and its URL identify the same authorized file');
         local.google_token_expires_at = 0;
         picker.context.chrome.identity.getAuthToken = () => assert.fail('Renew the selected account through web OAuth');
         picker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
@@ -334,33 +332,64 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert.equal(await vm.runInContext('getGoogleAccessTokenSilently()', picker.context), 'renewed-token');
         picker.elements.get('geminiApiKey').value = 'test-key';
         picker.elements.get('cvGoal').value = '25';
+        local.cached_weeks = ['Semana 1'];
+        sync.current_week = 'Semana 1';
         await picker.elements.get('configForm').handlers.submit({ preventDefault() {} });
         assert.equal(sync.spreadsheet_id, 'new-sheet');
         assert.equal(picker.elements.get('googleStatus').textContent, '', 'Clear the save reminder after saving');
         assert.equal(picker.elements.get('googleStatus').className, 'status-msg', 'Hide the cleared confirmation instead of leaving an empty success box');
-        assert(!local.cached_weeks && !sync.current_week, 'Do not reuse the previous spreadsheet weeks');
+        assert.equal(local.cached_weeks[0], 'Semana 1', 'Saving other preferences must preserve the selected spreadsheet weeks');
+        assert.equal(sync.current_week, 'Semana 1');
 
         const reopened = popup('options.js', sync, local, firefox);
-        reopened.elements.get('spreadsheetId').value = sync.spreadsheet_id;
+        await reopened.ready();
         await vm.runInContext('updateGoogleAccountUI()', reopened.context);
         assert.equal(reopened.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla', 'Remember authorization after reopening settings');
 
         let cancelled = true;
+        let selectedSheet = 'next-sheet';
         picker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
             const params = new URL(url).searchParams;
             assert(!params.has('file_ids'), 'Change spreadsheet must allow choosing any spreadsheet');
-            const result = cancelled ? 'error=access_denied' : `picked_file_ids=next-sheet&access_token=next-token&scope=${encodeURIComponent(googleScope)}`;
+            const result = cancelled ? 'error=access_denied' : `picked_file_ids=${selectedSheet}&access_token=next-token&scope=${encodeURIComponent(googleScope)}`;
             callback(`${params.get('redirect_uri')}#${result}&state=${params.get('state')}`);
         };
         await picker.elements.get('btnConnectGoogle').handlers.click();
         assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla', 'Cancelling a change keeps the existing authorized file');
         assert.equal(local.google_authorized_spreadsheet_id, 'new-sheet');
-        assert.equal(input.value, 'new-sheet');
+        assert.equal(sync.spreadsheet_id, 'new-sheet', 'Cancelling must preserve the saved selection');
         cancelled = false;
         await picker.elements.get('btnConnectGoogle').handlers.click();
         assert.equal(local.google_authorized_spreadsheet_id, 'next-sheet');
-        assert.equal(input.value, 'https://docs.google.com/spreadsheets/d/next-sheet/edit');
-        assert.equal(sync.spreadsheet_id, 'new-sheet', 'Changing a file still waits for Save');
+        assert.equal(picker.elements.get('googleSpreadsheetLink').href, 'https://docs.google.com/spreadsheets/d/next-sheet/edit');
+        assert.equal(sync.spreadsheet_id, 'next-sheet', 'Changing a sheet saves immediately');
+        assert(!local.cached_weeks && !sync.current_week);
+
+        const nativeSet = picker.context.chrome.storage.sync.set;
+        selectedSheet = 'failed-sheet';
+        picker.context.chrome.storage.sync.set = (values, callback) => {
+            picker.context.chrome.runtime.lastError = { message: 'Storage quota exceeded' };
+            callback();
+            delete picker.context.chrome.runtime.lastError;
+        };
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(sync.spreadsheet_id, 'next-sheet');
+        assert(picker.elements.get('googleStatus').textContent.includes('no se pudo guardar'), 'A failed write must not report success');
+        assert.equal(picker.elements.get('googleStatus').className, 'status-msg error');
+        picker.context.chrome.storage.sync.set = nativeSet;
+        await picker.elements.get('configForm').handlers.submit({ preventDefault() {} });
+        assert.equal(picker.elements.get('status').textContent, 'Configuración guardada correctamente', 'Manual Save can retry a failed automatic write');
+        assert.equal(sync.spreadsheet_id, 'failed-sheet');
+
+        const nativeRemove = picker.context.chrome.storage.local.remove;
+        picker.context.chrome.storage.local.remove = (keys, callback) => {
+            picker.context.chrome.runtime.lastError = { message: 'Storage unavailable' };
+            callback();
+            delete picker.context.chrome.runtime.lastError;
+        };
+        await assert.rejects(vm.runInContext('saveConfig({ spreadsheet_id: "unsafe-change" })', picker.context));
+        assert.equal(sync.spreadsheet_id, 'failed-sheet', 'Do not switch sheets if the old week cache cannot be cleared');
+        picker.context.chrome.storage.local.remove = nativeRemove;
         await picker.elements.get('btnDisconnectGoogle').handlers.click();
         assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Autorizar planilla');
         assert(!local.google_authorized_spreadsheet_id);
@@ -410,14 +439,14 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     await returningOptions.ready();
     assert.equal(returningOptions.elements.get('privacyDisclosure').open, false);
 
-    const options = popup('options.js');
+    const options = popup('options.js', { spreadsheet_id: 'test-sheet' });
+    await options.ready();
     options.elements.get('geminiApiKey').value = 'test-key';
-    options.elements.get('spreadsheetId').value = 'test-sheet';
     options.elements.get('cvGoal').value = '25';
     await options.elements.get('configForm').handlers.submit({ preventDefault() {} });
     assert.equal(options.writes.length, 0, 'Consent is required before saving');
     options.elements.get('privacyConsent').checked = true;
-    options.elements.get('spreadsheetId').value = 'invalid/id';
+    vm.runInContext('configuredSpreadsheetId = "invalid/id"', options.context);
     await options.elements.get('configForm').handlers.submit({ preventDefault() {} });
     assert.equal(options.writes.length, 0, 'Invalid Sheet ID must not be saved');
 

@@ -258,6 +258,10 @@
       box-sizing: border-box;
     }
 
+    .status-area:has(.status-text:empty) {
+      display: none;
+    }
+
     .status-text {
       font-size: var(--fs-caption);
       font-weight: var(--fw-medium);

@@ -126,7 +126,6 @@ try:
     screenshot('options-first-run.png')
 
     js('''document.querySelector('#geminiApiKey').value='synthetic-key';
-        document.querySelector('#spreadsheetId').value='synthetic-sheet';
         document.querySelector('#configForm').dispatchEvent(new Event('submit',{cancelable:true}));''')
     wait_for('document.querySelector("#status").textContent.includes("Aceptá")')
     assert js('const done=arguments[arguments.length-1];chrome.storage.sync.get(null,done);', True) == {}
@@ -146,6 +145,9 @@ try:
     assert stored['google_token_scope'] == 'https://www.googleapis.com/auth/drive.file'
     assert stored['google_account_email'] == 'check@example.invalid'
     assert stored['google_authorized_spreadsheet_id'] == 'synthetic-sheet'
+    configured = js('const done=arguments[arguments.length-1];chrome.storage.sync.get(null,done);', True)
+    assert configured['spreadsheet_id'] == 'synthetic-sheet' and configured['privacy_consent']
+    assert js('return document.querySelector("#spreadsheetId");') is None
     assert js('return document.querySelector("#btnConnectGoogle").textContent;') == 'Cambiar planilla'
     assert not stored.get('user_disconnected')
     google_url = js('return window.googleOAuthUrl;')

@@ -14,7 +14,7 @@ Antes de instalar la extensión, creá tu copia de la planilla:
 
 1. Abrí la [plantilla de Google Sheets de Job Log](https://docs.google.com/spreadsheets/d/1pmP8vlTjwJwgYJL89mQZGuCMvN2pDb6_9oSI4HjAvPo/template/preview).
 2. Hacé clic en **"Utilizar plantilla"** (esquina superior derecha). Esto crea una copia limpia y privada en tu Google Drive.
-3. Copiá la **URL completa** de tu nueva planilla desde la barra de direcciones. La vas a necesitar en el Paso 2.
+3. Más adelante, elegí esa copia en el selector de Google desde la configuración de Job Log.
 
 ---
 
@@ -60,11 +60,10 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
    - **IA principal:** elegí Gemini o Groq. La otra queda como respaldo si cargaste su clave.
    - **Gemini API Key:** pegá tu clave de Gemini.
    - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
-   - **URL de Google Sheets:** pegá la URL de tu planilla del Paso 0.
-3. Aceptá el uso de datos y pulsá **Autorizar planilla** en **Cuenta de Google**. Google te permite seleccionar y autorizar tu copia de la plantilla. Si dejás vacía la URL, podés buscarla en el selector.
-4. Hacé clic en **Guardar configuración** para aplicar la planilla elegida y tus preferencias.
+3. Aceptá el uso de datos y pulsá **Autorizar planilla** en **Cuenta de Google**. Elegí tu copia de la plantilla en el selector: Job Log la autoriza y guarda automáticamente, sin copiar ni pegar enlaces.
+4. Hacé clic en **Guardar configuración** para aplicar las claves de IA, el proveedor y el objetivo semanal que ingresaste. La planilla autorizada ya queda guardada.
 
-Después de autorizarla, el botón pasa a **Cambiar planilla** y permite elegir otra en Google. Si editás la URL, vuelve a **Autorizar planilla** para el nuevo archivo.
+Después de autorizarla, el botón pasa a **Cambiar planilla** y permite elegir otra en Google, que también se guarda automáticamente. **Abrir planilla** abre la selección actual en Google Sheets.
 
 ![Paso 2: Panel de configuración de credenciales](./docs/assets/02-configuration.png)
 
@@ -109,7 +108,7 @@ Los paquetes quedan en `dist/`.
 
 ### ¿A qué archivos de Google puede acceder la extensión?
 
-Job Log solicita `https://www.googleapis.com/auth/drive.file`: acceso a los archivos que autorizás para la app, en lugar de todas tus hojas de cálculo. Usa la planilla seleccionada para registrar postulaciones y consultar el progreso. Pegar una URL no concede acceso: tenés que autorizar esa planilla con el selector de Google. Podés revocar el permiso desde tu cuenta de Google.
+Job Log solicita `https://www.googleapis.com/auth/drive.file`: acceso a los archivos que autorizás para la app, en lugar de todas tus hojas de cálculo. Usa la planilla seleccionada para registrar postulaciones y consultar el progreso. La planilla se elige y autoriza en el selector de Google, y se guarda automáticamente. Podés revocar el permiso desde tu cuenta de Google.
 
 Si usaste una versión anterior, volvé a autorizar tu planilla. Para comprobar que funciona sin el permiso amplio anterior, revocá primero el acceso de Job Log desde tu cuenta de Google y conectá nuevamente.
 
