@@ -302,6 +302,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         };
         await picker.elements.get('btnConnectGoogle').handlers.click();
         assert.equal(picker.writes.length, 0, 'Consent is required before opening Picker');
+        assert.equal(picker.elements.get('googleTemplateHelp').hidden, false, 'Show the template link until a spreadsheet is authorized');
         picker.elements.get('privacyConsent').checked = true;
         response = 'invalid/id';
         await picker.elements.get('btnConnectGoogle').handlers.click();
@@ -322,6 +323,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla');
         assert.equal(picker.elements.get('btnConnectGoogle').className, 'btn-save secondary');
         assert(picker.elements.get('googleAccountHelp').textContent.includes('está autorizada'));
+        assert.equal(picker.elements.get('googleTemplateHelp').hidden, true, 'Hide the first-use template instructions once the spreadsheet is authorized');
         local.google_token_expires_at = 0;
         picker.context.chrome.identity.getAuthToken = () => assert.fail('Renew the selected account through web OAuth');
         picker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {

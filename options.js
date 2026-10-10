@@ -25,6 +25,7 @@ const updateGoogleSpreadsheetAction = () => {
     const button = document.getElementById('btnConnectGoogle');
     button.textContent = authorized ? 'Cambiar planilla' : 'Autorizar planilla';
     button.className = authorized ? 'btn-save secondary' : 'btn-save';
+    document.getElementById('googleTemplateHelp').hidden = authorized;
     document.getElementById('googleAccountHelp').textContent = authorized
         ? 'La planilla está autorizada. Podés cambiarla cuando lo necesites.'
         : 'Pulsá Autorizar planilla y elegí tu copia en Google. La selección se guarda automáticamente.';

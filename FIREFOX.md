@@ -21,6 +21,8 @@ La instalación disponible desde este repositorio es temporal: se elimina al cer
 1. Abrí **Job Log → Configuración** desde el menú de extensiones.
 2. Ingresá una clave API de Gemini o Groq. Elegí la IA principal y aceptá el uso de datos.
 3. Pulsá **Autorizar planilla** y seleccioná tu copia en Google: queda guardada automáticamente. Pulsá **Guardar configuración** para aplicar las claves de IA, el proveedor y el objetivo semanal. Job Log solicita acceso solo a los archivos que autorizás para la app con `drive.file`.
+
+   Si todavía no tenés tu copia, abrí el enlace **plantilla de Job Log** en **Cuenta de Google**, pulsá **Utilizar plantilla** en Google y volvé a la configuración para autorizarla.
 4. Abrí una oferta de empleo, pulsá el icono de Job Log, elegí la semana y seleccioná **Registrar postulación**. Podés añadir una nota opcional.
 5. Pulsá **Ver progreso** para consultar tus postulaciones y metas semanales.
 

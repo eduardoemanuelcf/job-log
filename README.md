@@ -13,6 +13,7 @@ Para Gemini, usa `gemini-3.5-flash-lite` y, si necesita reintentar con otro mode
 Antes de instalar la extensión, creá tu copia de la planilla:
 
 1. Abrí la [plantilla de Google Sheets de Job Log](https://docs.google.com/spreadsheets/d/1pmP8vlTjwJwgYJL89mQZGuCMvN2pDb6_9oSI4HjAvPo/template/preview).
+   También podés abrirla desde el botón **Get the Sheets template** de [la web](https://job-log.emanuelcabral.dev/) o desde **Cuenta de Google → plantilla de Job Log** en la configuración inicial de la extensión.
 2. Hacé clic en **"Utilizar plantilla"** (esquina superior derecha). Esto crea una copia limpia y privada en tu Google Drive.
 3. Más adelante, elegí esa copia en el selector de Google desde la configuración de Job Log.
 
