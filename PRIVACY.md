@@ -1,6 +1,6 @@
 # Política de privacidad de Job Log
 
-Última actualización: 8 de octubre de 2026. Aplicable a las versiones de Chrome, Brave, Edge, Opera y Firefox de escritorio.
+Última actualización: 10 de octubre de 2026. Aplicable a las versiones de Chrome, Brave, Edge, Opera y Firefox de escritorio.
 
 La página pública de privacidad está en https://job-log.emanuelcabral.dev/privacy.
 
@@ -14,7 +14,7 @@ Las claves y preferencias se guardan en `storage.sync`, el almacenamiento sincro
 
 Los datos permanecen hasta que los borres o desinstales la extensión. Cerrar sesión elimina el token y correo locales, pero no borra la planilla, las claves ni las preferencias. Podés borrar las claves desde la configuración, eliminar los datos de la extensión o desinstalarla y revocar el acceso de Job Log desde los controles de tu cuenta Google. Las filas ya guardadas se eliminan desde Google Sheets; los datos sincronizados también están sujetos a los controles de la cuenta del navegador.
 
-La lectura de una oferta ocurre cuando pulsás Registrar postulación. Job Log no registra el historial general ni lee otras pestañas en segundo plano. La IA puede recibir hasta 6.000 caracteres del texto de la oferta, junto con el título y empresa detectados. Las consultas de semanas y objetivos utilizan la planilla que configuraste. Google concede el scope de acceso a todas tus hojas de cálculo, aunque el código utiliza la planilla elegida.
+La lectura de una oferta ocurre cuando pulsás Registrar postulación. Job Log no registra el historial general ni lee otras pestañas en segundo plano. La IA puede recibir hasta 6.000 caracteres del texto de la oferta, junto con el título y empresa detectados. Las consultas de semanas y objetivos utilizan la planilla que configuraste. Job Log solicita el scope `https://www.googleapis.com/auth/drive.file`, que permite acceder a los archivos autorizados para la app. La planilla se autoriza mediante Google Picker en el flujo de conexión con Google; pegar una URL no concede acceso por sí solo. Este cambio no revoca los permisos concedidos a versiones anteriores: podés revocarlos desde tu cuenta de Google y volver a autorizar la planilla.
 
 El tratamiento de datos por Google, LinkedIn, Gemini y Groq está sujeto a las políticas y condiciones de esos proveedores. Las solicitudes de autenticación, las postulaciones guardadas y el texto enviado a la IA van directamente desde tu navegador a los servicios involucrados.
 

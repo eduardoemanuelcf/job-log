@@ -1,6 +1,6 @@
 # Condiciones del Servicio de Job Log
 
-Última actualización: 8 de octubre de 2026
+Última actualización: 10 de octubre de 2026
 
 Al utilizar la extensión Job Log, aceptas las siguientes condiciones de uso.
 
@@ -9,7 +9,7 @@ Job Log es una herramienta de código abierto provista de forma gratuita para fa
 
 ## 2. Responsabilidad del Usuario
 * **Claves de API y Hojas de Cálculo:** Eres responsable de obtener de forma individual tus claves de API (Gemini y/o Groq) y mantener la privacidad de las mismas.
-* **Control de Cuentas:** El acceso otorgado mediante Google OAuth para escribir en tu hoja de cálculo es gestionado localmente en tu navegador. Eres el único responsable del uso y cuidado del acceso a tu Google Drive.
+* **Control de Cuentas:** Autorizas la planilla mediante Google Picker y el permiso `drive.file`. El token de Google OAuth para leer y escribir en esa planilla se guarda localmente en tu navegador. Eres responsable del uso y cuidado de tu cuenta y puedes revocar el acceso desde tu cuenta de Google.
 
 ## 3. Exclusión de Garantías y Responsabilidad
 Esta extensión se distribuye "tal cual", sin garantías de ningún tipo, expresas o implícitas. No nos hacemos responsables de pérdidas de datos, fallos técnicos en las hojas de cálculo, cambios en las APIs externas de terceros o cualquier inconveniente derivado de su uso.

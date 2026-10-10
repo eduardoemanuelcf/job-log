@@ -32,7 +32,7 @@ Texto a analizar:
 ${text}`;
 };
 
-const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
+const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.6-flash'];
 
 const GROQ_MODELS = [
     'openai/gpt-oss-20b',

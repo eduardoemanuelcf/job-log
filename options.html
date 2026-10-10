@@ -420,6 +420,17 @@
       cursor: not-allowed;
     }
 
+    .btn-save.secondary:not(:disabled) {
+      background: transparent;
+      color: var(--text-main);
+      border-color: var(--border-color);
+    }
+
+    .btn-save.secondary:hover:not(:disabled) {
+      background: var(--input-bg);
+      border-color: var(--input-border);
+    }
+
     .btn-danger {
       background: var(--error-bg);
       color: var(--error-text);
@@ -603,7 +614,8 @@
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
             <span>URL de Google Sheets</span>
           </label>
-          <input type="text" id="spreadsheetId" required autocomplete="off">
+          <input type="text" id="spreadsheetId" required autocomplete="off" aria-describedby="spreadsheetHelp">
+          <p class="subtitle" id="spreadsheetHelp">Pegá la URL de tu copia y pulsá Autorizar planilla en Cuenta de Google. Después, guardá la configuración.</p>
         </div>
 
         <div class="form-group">
@@ -620,7 +632,7 @@
 
         <details id="privacyDisclosure" class="privacy-disclosure" open>
           <summary class="disclosure-toggle">Uso de datos y privacidad<svg class="disclosure-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
-          <p>Job Log guarda la oferta en tu planilla. Si necesita IA, envía texto a Gemini o Groq con tus claves y puede usar la otra como respaldo. Las claves y preferencias se guardan en el almacenamiento sincronizable del navegador (Chrome Sync o Firefox Sync, si activaste la sincronización de extensiones). Google concede acceso a todas tus hojas, aunque Job Log usa la que elegís. El token y tu correo quedan en este navegador.</p>
+          <p>Job Log guarda la oferta en tu planilla. Si necesita IA, envía texto a Gemini o Groq con tus claves y puede usar la otra como respaldo. Las claves y preferencias se guardan en el almacenamiento sincronizable del navegador (Chrome Sync o Firefox Sync, si activaste la sincronización de extensiones). Google concede acceso a los archivos que autorizás para Job Log. El token y el correo disponible quedan en este navegador.</p>
           <label for="privacyConsent"><input type="checkbox" id="privacyConsent" required> Acepto este uso de datos.</label>
         </details>
         <p class="privacy-links"><a href="https://job-log.emanuelcabral.dev/privacy" target="_blank" rel="noopener noreferrer">Privacidad</a> · <a href="https://job-log.emanuelcabral.dev/terms" target="_blank" rel="noopener noreferrer">Condiciones</a></p>
@@ -634,14 +646,14 @@
         <h2>Cuenta de Google</h2>
         <span id="googleAccountBadge" class="badge" style="display: none;"></span>
       </div>
-      <div class="subtitle">Conectá la cuenta de tu planilla.</div>
+      <div class="subtitle" id="googleAccountHelp">Elegí tu copia de la planilla en Google para permitir que Job Log la lea y edite.</div>
 
       <div id="googleAccountInfo" style="display: none; margin-bottom: 16px; font-size: var(--fs-body); color: var(--text-muted);">
         Conectado como <strong id="googleAccountEmail" style="color: var(--text-main);"></strong>
       </div>
 
       <div style="display: flex; gap: 12px; flex-direction: column;">
-        <button type="button" class="btn-save" id="btnConnectGoogle">Conectar cuenta</button>
+        <button type="button" class="btn-save" id="btnConnectGoogle">Autorizar planilla</button>
         <button type="button" class="btn-danger" id="btnDisconnectGoogle" style="display: none;">Cerrar sesión</button>
       </div>
       <div id="googleStatus" class="status-msg" role="status" aria-live="polite"></div>

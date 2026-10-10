@@ -32,7 +32,8 @@ class Fixture(BaseHTTPRequestHandler):
             params = parse_qs(urlparse(self.path).query)
             redirect = params['redirect_uri'][0]
             self.send_response(302)
-            self.send_header('Location', f"{redirect}#access_token=synthetic-token&expires_in=3600&state={params['state'][0]}")
+            picked = params.get('file_ids', ['synthetic-sheet'])[0]
+            self.send_header('Location', f"{redirect}#access_token=synthetic-token&expires_in=3600&state={params['state'][0]}&picked_file_ids={picked}&scope={params['scope'][0]}")
             self.end_headers()
         else:
             self.send_response(200)
@@ -131,6 +132,7 @@ try:
     assert js('const done=arguments[arguments.length-1];chrome.storage.sync.get(null,done);', True) == {}
 
     js(mock_fetch)
+    js("document.querySelector('#privacyConsent').checked=true;")
     js(f'''window.nativeLaunch=chrome.identity.launchWebAuthFlow;
         chrome.identity.launchWebAuthFlow=(options,callback)=>{{
             window.googleOAuthUrl=options.url;
@@ -141,9 +143,15 @@ try:
     wait_for('document.querySelector("#googleAccountBadge").textContent === "Conectada"')
     stored = js('const done=arguments[arguments.length-1];chrome.storage.local.get(null,done);', True)
     assert stored['google_access_token'] == 'synthetic-token'
+    assert stored['google_token_scope'] == 'https://www.googleapis.com/auth/drive.file'
     assert stored['google_account_email'] == 'check@example.invalid'
+    assert stored['google_authorized_spreadsheet_id'] == 'synthetic-sheet'
+    assert js('return document.querySelector("#btnConnectGoogle").textContent;') == 'Cambiar planilla'
     assert not stored.get('user_disconnected')
     google_url = js('return window.googleOAuthUrl;')
+    picker_params = parse_qs(urlparse(google_url).query)
+    assert picker_params['trigger_onepick'] == ['true']
+    assert picker_params['scope'] == ['https://www.googleapis.com/auth/drive.file']
     with urlopen(google_url, timeout=20) as response:
         google_redirect_accepted = 'redirect_uri_mismatch' not in response.read().decode()
 
@@ -167,6 +175,8 @@ try:
     wait_for('document.querySelector("#googleAccountBadge").textContent === "No conectada"')
     stored = js('const done=arguments[arguments.length-1];chrome.storage.local.get(null,done);', True)
     assert stored['user_disconnected'] and 'google_access_token' not in stored and 'google_account_email' not in stored
+    assert 'google_authorized_spreadsheet_id' not in stored
+    assert js('return document.querySelector("#btnConnectGoogle").textContent;') == 'Autorizar planilla'
 
     request('DELETE', f'/session/{session}')
     session = None
@@ -204,7 +214,7 @@ try:
     command('/window', {'handle': handles[-1]})
     command('/url', {'url': extension_url + '/popup.html'})
     tab = js(f'''const done=arguments[arguments.length-1];chrome.tabs.query({{}},tabs=>done(tabs.find(tab=>tab.url.startsWith({json.dumps(fixture_url)})).id));''', True)
-    js('''const done=arguments[arguments.length-1];chrome.storage.local.set({google_access_token:'synthetic-token',google_token_expires_at:Date.now()+3600000,cached_weeks:['Semana 1']},()=>chrome.storage.local.remove('user_disconnected',done));''', True)
+    js('''const done=arguments[arguments.length-1];chrome.storage.local.set({google_access_token:'synthetic-token',google_token_scope:'https://www.googleapis.com/auth/drive.file',google_token_expires_at:Date.now()+3600000,cached_weeks:['Semana 1']},()=>chrome.storage.local.remove('user_disconnected',done));''', True)
     command('/url', {'url': extension_url + '/popup.html'})
     wait_for('!document.querySelector("#btnPostular").disabled')
     js(mock_fetch)
@@ -249,7 +259,7 @@ try:
     wait_for('document.querySelector("#refreshProgress") && !document.querySelector("#refreshProgress").disabled')
     assert js('return location.pathname;') == '/progress.html'
     js(mock_fetch)
-    js('const done=arguments[arguments.length-1];chrome.storage.local.set({google_access_token:"synthetic-token",google_token_expires_at:Date.now()+3600000},()=>chrome.storage.local.remove("user_disconnected",done));', True)
+    js('const done=arguments[arguments.length-1];chrome.storage.local.set({google_access_token:"synthetic-token",google_token_scope:"https://www.googleapis.com/auth/drive.file",google_token_expires_at:Date.now()+3600000},()=>chrome.storage.local.remove("user_disconnected",done));', True)
     js('document.querySelector("#refreshProgress").click();')
     wait_for('!document.querySelector("#progressChart").hidden')
     assert js('return document.querySelectorAll("#progressRows tr").length;') == 3

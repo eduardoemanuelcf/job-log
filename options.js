@@ -1,3 +1,27 @@
+const getSpreadsheetInputId = () => {
+    const value = document.getElementById('spreadsheetId').value.trim();
+    return value.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)?.[1] || value;
+};
+
+let googleAuthorizedSpreadsheetId = '';
+
+const updateGoogleSpreadsheetAction = () => {
+    const authorized = !!googleAuthorizedSpreadsheetId && getSpreadsheetInputId() === googleAuthorizedSpreadsheetId;
+    const button = document.getElementById('btnConnectGoogle');
+    button.textContent = authorized ? 'Cambiar planilla' : 'Autorizar planilla';
+    button.className = authorized ? 'btn-save secondary' : 'btn-save';
+    document.getElementById('googleAccountHelp').textContent = authorized
+        ? 'La planilla está autorizada. Podés cambiarla cuando lo necesites.'
+        : 'Elegí tu copia de la planilla en Google para permitir que Job Log la lea y edite.';
+    document.getElementById('spreadsheetHelp').textContent = authorized
+        ? 'Esta planilla ya está autorizada. Para elegir otra, pulsá Cambiar planilla.'
+        : 'Pegá la URL de tu copia y pulsá Autorizar planilla en Cuenta de Google. Después, guardá la configuración.';
+};
+
+document.getElementById('spreadsheetId').addEventListener('input', () => {
+    if (!document.getElementById('btnConnectGoogle').disabled) updateGoogleSpreadsheetAction();
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const data = await loadConfig();
@@ -75,7 +99,6 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
     const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
     const groqApiKey = document.getElementById('groqApiKey').value.trim();
     const aiProvider = document.querySelector('input[name="aiProvider"]:checked').value;
-    const spreadsheetIdInput = document.getElementById('spreadsheetId').value.trim();
     const cvGoal = document.getElementById('cvGoal').value.trim() || '25';
     const status = document.getElementById('status');
 
@@ -97,8 +120,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
         return;
     }
 
-    const match = spreadsheetIdInput.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-    const spreadsheetId = match ? match[1].trim() : spreadsheetIdInput.trim();
+    const spreadsheetId = getSpreadsheetInputId();
     if (!/^[a-zA-Z0-9_-]+$/.test(spreadsheetId) || !/^\d+$/.test(cvGoal) || !Number.isSafeInteger(Number(cvGoal)) || Number(cvGoal) < 1) {
         status.className = 'status-msg error';
         status.textContent = 'Ingresá una URL o ID válido de Google Sheets y un objetivo entero mayor que cero.';
@@ -109,6 +131,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
     btnSave.textContent = 'Guardando...';
 
     try {
+        const previous = await loadConfig();
         await new Promise((resolve, reject) => {
             chrome.storage.sync.set({
                 gemini_api_key: geminiApiKey,
@@ -125,6 +148,10 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
                 }
             });
         });
+        if (previous.spreadsheet_id !== spreadsheetId) {
+            await new Promise(resolve => chrome.storage.local.remove(['cached_weeks'], resolve));
+            await new Promise(resolve => chrome.storage.sync.remove(['current_week'], resolve));
+        }
 
         document.getElementById('privacyDisclosure').open = false;
         let sheetWarning = null;
@@ -139,6 +166,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
                     throw await sheetsError(metaResponse, 'Error al acceder a la planilla');
                 }
                 const metaData = await metaResponse.json();
+                await new Promise(resolve => chrome.storage.local.set({ google_authorized_spreadsheet_id: spreadsheetId }, resolve));
                 let exactProgresoTitle = '';
                 for (const s of metaData.sheets || []) {
                     if (s.properties && s.properties.title && (s.properties.title.trim().toLowerCase() === 'progreso' || s.properties.title.trim().toLowerCase() === 'progreso semanal')) {
@@ -173,6 +201,7 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
             sheetWarning = sheetsErr.message;
         }
 
+        await updateGoogleAccountUI();
         if (sheetWarning) {
             btnSave.className = 'btn-save';
             btnSave.textContent = 'Guardado con advertencias';
@@ -191,6 +220,8 @@ document.getElementById('configForm').addEventListener('submit', async (e) => {
 
             status.className = 'status-msg success';
             status.textContent = 'Configuración guardada correctamente';
+            document.getElementById('googleStatus').textContent = '';
+            document.getElementById('googleStatus').className = 'status-msg';
 
             setTimeout(() => {
                 btnSave.className = 'btn-save';
@@ -563,9 +594,12 @@ const updateGoogleAccountUI = async () => {
     const badge = document.getElementById('googleAccountBadge');
 
     const auth = await checkGoogleAuthStatus();
+    const local = await new Promise(resolve => chrome.storage.local.get(['google_authorized_spreadsheet_id'], resolve));
+    googleAuthorizedSpreadsheetId = auth.isConnected ? local.google_authorized_spreadsheet_id || '' : '';
+    updateGoogleSpreadsheetAction();
 
     if (auth.isConnected) {
-        if (btnConnect) btnConnect.style.display = 'none';
+        if (btnConnect) btnConnect.style.display = 'inline-flex';
         if (btnDisconnect) {
             btnDisconnect.style.display = 'inline-flex';
             btnDisconnect.disabled = false;
@@ -598,7 +632,6 @@ const updateGoogleAccountUI = async () => {
         if (btnConnect) {
             btnConnect.style.display = 'inline-flex';
             btnConnect.disabled = false;
-            btnConnect.textContent = 'Conectar cuenta';
         }
         if (btnDisconnect) btnDisconnect.style.display = 'none';
         if (infoDiv) infoDiv.style.display = 'none';
@@ -615,17 +648,21 @@ document.getElementById('btnConnectGoogle').addEventListener('click', async () =
     const btn = document.getElementById('btnConnectGoogle');
     const status = document.getElementById('googleStatus');
     btn.disabled = true;
-    btn.textContent = 'Conectando...';
+    btn.textContent = 'Autorizando...';
     status.className = 'status-msg';
     status.textContent = '';
 
     try {
-        const token = await getAccessTokenViaWebFlow(true, true);
-        if (token) {
-            status.className = 'status-msg success';
-            status.textContent = 'Cuenta conectada correctamente.';
-            await updateGoogleAccountUI();
+        if (!document.getElementById('privacyConsent').checked) {
+            throw new Error('Aceptá el uso de datos antes de autorizar la planilla.');
         }
+        const input = document.getElementById('spreadsheetId');
+        const spreadsheetId = getSpreadsheetInputId();
+        const selectedId = await pickGoogleSpreadsheet(spreadsheetId === googleAuthorizedSpreadsheetId ? '' : spreadsheetId);
+        input.value = `https://docs.google.com/spreadsheets/d/${selectedId}/edit`;
+        status.className = 'status-msg success';
+        status.textContent = 'Planilla autorizada. Guardá la configuración para aplicar los cambios.';
+        await updateGoogleAccountUI();
     } catch (err) {
         console.error('Error connecting account:', err);
         status.className = 'status-msg error';
@@ -633,11 +670,6 @@ document.getElementById('btnConnectGoogle').addEventListener('click', async () =
         await updateGoogleAccountUI();
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Conectar cuenta';
-        setTimeout(() => {
-            status.className = 'status-msg';
-            status.textContent = '';
-        }, 4000);
     }
 });
 

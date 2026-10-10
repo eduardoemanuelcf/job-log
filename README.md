@@ -4,6 +4,8 @@
 
 La extensión funciona desde tu navegador y se conecta directamente con Google, LinkedIn y los proveedores de IA que configurás. Job Log no opera un servidor intermediario.
 
+Para Gemini, usa `gemini-3.5-flash-lite` y, si necesita reintentar con otro modelo, `gemini-3.6-flash`. El modelo `gemini-3.5-flash` fue reemplazado; Flash-Lite sigue disponible. La disponibilidad y las cuotas dependen de tu cuenta de Google.
+
 ---
 
 ## Paso 0: Preparar la hoja de cálculo
@@ -59,8 +61,10 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
    - **Gemini API Key:** pegá tu clave de Gemini.
    - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
    - **URL de Google Sheets:** pegá la URL de tu planilla del Paso 0.
-3. Aceptá el uso de datos y hacé clic en **Guardar configuración**.
-4. Pulsá **Conectar cuenta** y autorizá el acceso a Google Sheets.
+3. Aceptá el uso de datos y pulsá **Autorizar planilla** en **Cuenta de Google**. Google te permite seleccionar y autorizar tu copia de la plantilla. Si dejás vacía la URL, podés buscarla en el selector.
+4. Hacé clic en **Guardar configuración** para aplicar la planilla elegida y tus preferencias.
+
+Después de autorizarla, el botón pasa a **Cambiar planilla** y permite elegir otra en Google. Si editás la URL, vuelve a **Autorizar planilla** para el nuevo archivo.
 
 ![Paso 2: Panel de configuración de credenciales](./docs/assets/02-configuration.png)
 
@@ -103,9 +107,17 @@ Los paquetes quedan en `dist/`.
 
 ## Privacidad y seguridad
 
-### ¿Por qué Google avisa que la extensión puede "ver y editar todas tus hojas de cálculo"?
+### ¿A qué archivos de Google puede acceder la extensión?
 
-Google concede acceso a todas tus hojas de cálculo. Job Log usa la planilla que configuraste, pero el permiso concedido sigue siendo amplio. Podés revocarlo desde tu cuenta de Google.
+Job Log solicita `https://www.googleapis.com/auth/drive.file`: acceso a los archivos que autorizás para la app, en lugar de todas tus hojas de cálculo. Usa la planilla seleccionada para registrar postulaciones y consultar el progreso. Pegar una URL no concede acceso: tenés que autorizar esa planilla con el selector de Google. Podés revocar el permiso desde tu cuenta de Google.
+
+Si usaste una versión anterior, volvé a autorizar tu planilla. Para comprobar que funciona sin el permiso amplio anterior, revocá primero el acceso de Job Log desde tu cuenta de Google y conectá nuevamente.
+
+### Preparar OAuth para probar `drive.file`
+
+En Google Cloud, habilitá **Google Sheets API** y **Google Picker API**, y agregá `https://www.googleapis.com/auth/drive.file` en **Google Auth Platform → Data Access**. La selección usa el Picker dentro del flujo OAuth, sin servidor ni clave API adicional: [documentación de Google](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker).
+
+Para seguir el pedido de verificación, probá primero con otro proyecto. Actualizá los IDs de cliente en `manifest.json` y `oauth-config.js` con las credenciales de ese proyecto y registrá los redirects que usa `googleRedirectUri()` para cada navegador. En un proyecto en modo Testing, agregá tu cuenta como usuario de prueba. En el proyecto original, no elimines scopes previamente aprobados; retirás `spreadsheets` si no estaba aprobado una vez probada la migración.
 
 ### Arquitectura sin servidores
 

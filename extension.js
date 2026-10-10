@@ -19,7 +19,9 @@ const sheetsError = async (response, contexto) => {
     const body = await response.json().catch(() => null);
     const detalle = body?.error?.message || '';
     const codigo = body?.error?.status || '';
-    return new Error(`${contexto} (${response.status}${codigo ? ' ' + codigo : ''}): ${detalle}`);
+    const ayuda = response.status === 403 || response.status === 404
+        ? ' Revisá la cuenta y pulsá Autorizar planilla desde Configuración.' : '';
+    return new Error(`${contexto} (${response.status}${codigo ? ' ' + codigo : ''}): ${detalle}${ayuda}`);
 };
 
 

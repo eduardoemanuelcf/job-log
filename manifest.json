@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Log",
-  "version": "1.13",
+  "version": "1.14",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyF1ek3BJ+9seoAorpvrwg2H0LZIOUCnu/86VTFhYlb+xuagtToB/8TtR6y7hYwElcqT7uiubCTOMwCzOVuTgGORjKmgpv0n04Mh/EDzk/zoKmI9hHxsK42ZVf4jFjmwJFdDEwyX8S4TWA8HNIJG13isMlQR0cUVWwSRXrUpltF6SpGyh7yJDuNLnqVOkRwbOjYSZZLs/2mgYTQefcaG7wruYwcqriXUqZP4s1aDmpGxLNzygRkdsJ561jFiSuZ/LIPRixvSmZyfSdxzpAfaCuoBAhaLiCsdX9X/VOF8UUzb44Z5gKedTwRwIUyGONWwXUADf+hGYW6843HTdFMnVmQIDAQAB",
   "permissions": [
     "activeTab",
@@ -26,7 +26,7 @@
   "oauth2": {
     "client_id": "73095001022-ldfsn9ckghqa4nr01bii35f78168l895.apps.googleusercontent.com",
     "scopes": [
-      "https://www.googleapis.com/auth/spreadsheets"
+      "https://www.googleapis.com/auth/drive.file"
     ]
   },
   "description": "Registrá postulaciones desde la oferta en tu Google Sheets y organizá tu búsqueda por semanas con Gemini o Groq.",

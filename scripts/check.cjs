@@ -5,6 +5,8 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const root = resolve(__dirname, '..');
 const manifest = JSON.parse(readFileSync(resolve(root, 'manifest.json')));
+const googleScope = 'https://www.googleapis.com/auth/drive.file';
+assert.deepEqual(manifest.oauth2.scopes, [googleScope]);
 
 function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     const html = readFileSync(resolve(root, script.replace('.js', '.html')), 'utf8');
@@ -74,7 +76,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert.equal(firstRun.elements.get('configRequiredArea').style.display, 'flex');
         assert.equal(firstRun.calls.length, 0, 'No background data request before consent');
 
-        const signedIn = popup('popup.js', { ...config, privacy_consent: true }, { google_access_token: 'test-token', google_token_expires_at: Date.now() + 3600000, cached_weeks: ['Semana 1'] }, firefox);
+        const signedIn = popup('popup.js', { ...config, privacy_consent: true }, { google_access_token: 'test-token', google_token_scope: googleScope, google_token_expires_at: Date.now() + 3600000, cached_weeks: ['Semana 1'] }, firefox);
         await signedIn.ready();
         await signedIn.elements.get('btnPostular').handlers.click();
         const saved = signedIn.calls.find(c => c.url.includes(':append'));
@@ -90,7 +92,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         disconnected.elements.get('authBannerAction').onclick();
         assert(disconnected.optionsOpened(), 'Login must open the persistent options page');
 
-        const local = { google_access_token: 'test-token', google_token_expires_at: Date.now() + 3600000, cached_weeks: ['Semana 1'],
+        const local = { google_access_token: 'test-token', google_token_scope: googleScope, google_token_expires_at: Date.now() + 3600000, cached_weeks: ['Semana 1'],
             application_note_draft: { url: 'https://example.com/jobs/1', text: '=SUM(1;2)\nSeguimiento personal' } };
         const withNote = popup('popup.js', { ...config, privacy_consent: true }, local, firefox);
         await withNote.ready();
@@ -235,8 +237,9 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert.equal((await vm.runInContext('checkGoogleAuthStatus()', flow.context)).isConnected, true);
         assert(local.google_token_expires_at > Date.now());
         assert.equal(await vm.runInContext('forceNewGoogleToken("test-token")', flow.context), 'test-token');
+        local.google_authorized_spreadsheet_id = 'test-sheet';
         await vm.runInContext('disconnectGoogle()', flow.context);
-        assert(!local.google_access_token && !local.google_account_email);
+        assert(!local.google_access_token && !local.google_account_email && !local.google_authorized_spreadsheet_id);
         assert.equal(local.user_disconnected, true);
         assert.equal((await vm.runInContext('checkGoogleAuthStatus()', flow.context)).isConnected, false);
         assert.equal(await vm.runInContext('getAccessTokenViaWebFlow(true, true)', flow.context), 'test-token');
@@ -245,7 +248,8 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
 
     const native = popup();
     const prompts = [];
-    native.context.chrome.identity.getAuthToken = ({ interactive }, callback) => {
+    native.context.chrome.identity.getAuthToken = ({ interactive, scopes }, callback) => {
+        assert.deepEqual(Array.from(scopes), [googleScope]);
         prompts.push(interactive);
         callback(interactive ? { token: 'native-token' } : undefined);
     };
@@ -278,6 +282,127 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert.equal(flow.writes.length, 0);
     }
 
+    for (const firefox of [false, true]) {
+        const sync = { spreadsheet_id: 'old-sheet', current_week: 'Semana 5' };
+        const local = { cached_weeks: ['Semana 5'] };
+        const picker = popup('options.js', sync, local, firefox);
+        const input = picker.elements.get('spreadsheetId');
+        input.value = 'https://docs.google.com/spreadsheets/d/new-sheet/edit';
+        let response = 'new-sheet';
+        picker.context.chrome.identity.launchWebAuthFlow = ({ url, interactive }, callback) => {
+            const params = new URL(url).searchParams;
+            assert.equal(interactive, true);
+            assert.equal(params.get('scope'), googleScope, 'Picker must request only drive.file');
+            assert.equal(params.get('trigger_onepick'), 'true');
+            assert.equal(params.get('prompt'), 'consent');
+            assert.equal(params.get('include_granted_scopes'), 'false');
+            assert.equal(params.get('mimetypes'), 'application/vnd.google-apps.spreadsheet');
+            assert.equal(params.get('file_ids'), 'new-sheet');
+            callback(`${params.get('redirect_uri')}?picked_file_ids=${response}#access_token=picker-token&scope=${encodeURIComponent(googleScope)}&state=${params.get('state')}`);
+        };
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(picker.writes.length, 0, 'Consent is required before opening Picker');
+        picker.elements.get('privacyConsent').checked = true;
+        response = 'different-sheet';
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(picker.writes.length, 0, 'A different file must not be cached');
+        assert.equal(input.value, 'https://docs.google.com/spreadsheets/d/new-sheet/edit');
+        response = 'new-sheet';
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(input.value, 'https://docs.google.com/spreadsheets/d/new-sheet/edit');
+        assert.equal(sync.spreadsheet_id, 'old-sheet', 'Selection must wait for Save');
+        assert.equal(local.google_token_scope, googleScope);
+        assert.equal(picker.elements.get('btnConnectGoogle').style.display, 'inline-flex', 'Keep Picker available while connected');
+        assert.equal(local.google_authorized_spreadsheet_id, 'new-sheet');
+        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla');
+        assert.equal(picker.elements.get('btnConnectGoogle').className, 'btn-save secondary');
+        assert(picker.elements.get('googleAccountHelp').textContent.includes('está autorizada'));
+        input.value = 'different-sheet';
+        input.handlers.input();
+        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Autorizar planilla', 'A new URL needs its own authorization');
+        assert.equal(picker.elements.get('btnConnectGoogle').className, 'btn-save');
+        input.value = 'new-sheet';
+        input.handlers.input();
+        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla', 'An ID and its URL identify the same authorized file');
+        local.google_token_expires_at = 0;
+        picker.context.chrome.identity.getAuthToken = () => assert.fail('Renew the selected account through web OAuth');
+        picker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
+            const params = new URL(url).searchParams;
+            assert(!params.has('trigger_onepick'), 'Token renewal must not reopen Picker');
+            callback(`${params.get('redirect_uri')}#access_token=renewed-token&state=${params.get('state')}`);
+        };
+        assert.equal(await vm.runInContext('getGoogleAccessTokenSilently()', picker.context), 'renewed-token');
+        picker.elements.get('geminiApiKey').value = 'test-key';
+        picker.elements.get('cvGoal').value = '25';
+        await picker.elements.get('configForm').handlers.submit({ preventDefault() {} });
+        assert.equal(sync.spreadsheet_id, 'new-sheet');
+        assert.equal(picker.elements.get('googleStatus').textContent, '', 'Clear the save reminder after saving');
+        assert.equal(picker.elements.get('googleStatus').className, 'status-msg', 'Hide the cleared confirmation instead of leaving an empty success box');
+        assert(!local.cached_weeks && !sync.current_week, 'Do not reuse the previous spreadsheet weeks');
+
+        const reopened = popup('options.js', sync, local, firefox);
+        reopened.elements.get('spreadsheetId').value = sync.spreadsheet_id;
+        await vm.runInContext('updateGoogleAccountUI()', reopened.context);
+        assert.equal(reopened.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla', 'Remember authorization after reopening settings');
+
+        let cancelled = true;
+        picker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
+            const params = new URL(url).searchParams;
+            assert(!params.has('file_ids'), 'Change spreadsheet must allow choosing any spreadsheet');
+            const result = cancelled ? 'error=access_denied' : `picked_file_ids=next-sheet&access_token=next-token&scope=${encodeURIComponent(googleScope)}`;
+            callback(`${params.get('redirect_uri')}#${result}&state=${params.get('state')}`);
+        };
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Cambiar planilla', 'Cancelling a change keeps the existing authorized file');
+        assert.equal(local.google_authorized_spreadsheet_id, 'new-sheet');
+        assert.equal(input.value, 'new-sheet');
+        cancelled = false;
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(local.google_authorized_spreadsheet_id, 'next-sheet');
+        assert.equal(input.value, 'https://docs.google.com/spreadsheets/d/next-sheet/edit');
+        assert.equal(sync.spreadsheet_id, 'new-sheet', 'Changing a file still waits for Save');
+        await picker.elements.get('btnDisconnectGoogle').handlers.click();
+        assert.equal(picker.elements.get('btnConnectGoogle').textContent, 'Autorizar planilla');
+        assert(!local.google_authorized_spreadsheet_id);
+    }
+
+    for (const fragment of ['', 'picked_file_ids=one,two', 'picked_file_ids=invalid/id', 'error=access_denied', 'picked_file_ids=sheet&scope=email', 'picked_file_ids=sheet&expires_in=invalid']) {
+        const picker = popup('options.js', {}, {}, true);
+        picker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
+            const params = new URL(url).searchParams;
+            assert(!params.has('file_ids'), 'An empty input opens the full spreadsheet list');
+            callback(`${params.get('redirect_uri')}#${fragment}&access_token=picker-token&state=${params.get('state')}`);
+        };
+        await assert.rejects(vm.runInContext('pickGoogleSpreadsheet()', picker.context));
+        assert.equal(picker.writes.length, 0, 'Cancelled or invalid Picker responses must not change storage');
+    }
+
+    const untrustedPicker = popup('options.js');
+    untrustedPicker.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
+        const params = new URL(url).searchParams;
+        callback(`${params.get('redirect_uri')}#picked_file_ids=sheet&access_token=token&state=wrong`);
+    };
+    await assert.rejects(vm.runInContext('pickGoogleSpreadsheet()', untrustedPicker.context), /validar/);
+    assert.equal(untrustedPicker.writes.length, 0);
+    await assert.rejects(vm.runInContext('pickGoogleSpreadsheet("invalid/id")', untrustedPicker.context), /válido/);
+
+    for (const scope of [undefined, 'https://www.googleapis.com/auth/spreadsheets']) {
+        const local = { google_access_token: 'old-token', google_token_expires_at: Date.now() + 3600000, google_token_scope: scope };
+        const migration = popup('options.js', {}, local);
+        const removed = [];
+        migration.context.chrome.identity.removeCachedAuthToken = ({ token }, callback) => { removed.push(token); callback(); };
+        migration.context.chrome.identity.getAuthToken = ({ scopes }, callback) => {
+            assert.deepEqual(Array.from(scopes), [googleScope]);
+            callback('new-token');
+        };
+        assert.equal(await vm.runInContext('getGoogleAccessToken()', migration.context), 'new-token');
+        assert.deepEqual(removed, ['old-token']);
+        assert.equal(local.google_token_scope, googleScope);
+    }
+
+    const permissionError = await vm.runInContext('sheetsError({ status: 403, json: async () => ({error:{message:"Permission denied"}}) }, "Error al acceder")', popup().context);
+    assert(permissionError.message.includes('Autorizar planilla'));
+
     const firstOptions = popup('options.js');
     await firstOptions.ready();
     assert.equal(firstOptions.elements.get('privacyDisclosure').open, true);
@@ -295,5 +420,21 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     options.elements.get('spreadsheetId').value = 'invalid/id';
     await options.elements.get('configForm').handlers.submit({ preventDefault() {} });
     assert.equal(options.writes.length, 0, 'Invalid Sheet ID must not be saved');
-    console.log('Checks passed: Chrome/Firefox registration and notes, draft recovery, literal Sheet cells, progress rendering/refresh/empty/errors, consent, OAuth renewal/disconnect and input validation.');
+
+    const gemini = popup();
+    gemini.context.fetch = async (url, options) => {
+        gemini.calls.push({ url, options });
+        if (url.includes('gemini-3.5-flash-lite:')) {
+            return { ok: false, status: 404, text: async () => '{"error":{"message":"Model unavailable"}}' };
+        }
+        return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"company":"Example","title":"Engineer","source":"Example"}' }] } }] }) };
+    };
+    const extracted = await vm.runInContext('runGemini("test-key", "job text", () => {})', gemini.context);
+    assert.equal(extracted.company, 'Example');
+    assert.equal(extracted.title, 'Engineer');
+    assert.equal(gemini.calls.length, 2);
+    assert(gemini.calls[1].url.includes('/gemini-3.6-flash:generateContent?'));
+    assert.equal(JSON.parse(gemini.calls[1].options.body).generationConfig.thinkingConfig.thinkingLevel, 'minimal');
+    assert(!gemini.calls.some(call => call.url.includes('/gemini-3.5-flash:')), 'Do not use the deprecated Flash model');
+    console.log('Checks passed: Chrome/Firefox registration and notes, progress, consent, drive.file migration, Picker validation/cancellation/save, OAuth renewal/disconnect, Gemini 3.6 fallback and input validation.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
