@@ -145,6 +145,18 @@
       line-height: var(--lh-normal);
     }
 
+    [hidden] { display: none !important; }
+    .setup-progress { color: var(--text-muted); font-size: var(--fs-body); margin: 0 0 20px; line-height: var(--lh-normal); }
+    .step-summary { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .step-summary p { margin: 0; font-size: var(--fs-body); line-height: var(--lh-normal); }
+    .step-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .step-actions .btn-save { width: auto; }
+    .step-actions a { color: var(--text-muted); font-size: var(--fs-small); }
+    .step-summary .btn-save { width: auto; }
+    #setupComplete { margin: 0 0 24px; }
+    #btnCancelEdit { width: auto; margin-bottom: 20px; }
+    h2[tabindex]:focus, #setupComplete:focus { outline: none; }
+
     .form-group {
       margin-bottom: 20px;
       display: flex;
@@ -560,15 +572,24 @@
   <div class="container">
     <header class="app-header">
       <div class="app-title">Job Log</div>
-      <div class="app-subtitle">Panel de administración</div>
+      <div class="app-subtitle">Configuración</div>
     </header>
     <div class="divider"></div>
 
-    <div class="card">
+    <p id="setupProgress" class="setup-progress" role="status" aria-live="polite">Paso 1 de 3 · Configurá la IA</p>
+    <button type="button" class="btn-save secondary" id="btnCancelEdit" hidden>Volver a la configuración</button>
+    <div id="setupComplete" class="status-msg success" role="status" tabindex="-1" hidden>Job Log está listo para registrar postulaciones.</div>
+
+    <div class="card" id="aiCard">
       <div class="header-with-badge">
-        <h1>Configuración de Job Log</h1>
+        <h1>1. Configurar la IA</h1>
       </div>
-      <div class="subtitle">Datos requeridos para conectar la extensión.</div>
+      <div id="aiStepSummary" class="step-summary" hidden>
+        <p id="aiSummaryText">Claves guardadas</p>
+        <button type="button" class="btn-save secondary" id="btnEditAI">Editar claves</button>
+      </div>
+      <div id="aiStepContent">
+      <div class="subtitle">Elegí la IA principal y guardá tus claves API.</div>
 
       <form id="configForm">
         <div class="form-group">
@@ -610,36 +631,34 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="cvGoal">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-            <span>Objetivo de CVs por semana</span>
-          </label>
-          <div class="stepper-wrapper">
-            <button type="button" class="stepper-btn" id="btnMinus">-</button>
-            <input type="number" id="cvGoal" value="25" min="1" required autocomplete="off">
-            <button type="button" class="stepper-btn" id="btnPlus">+</button>
-          </div>
-        </div>
-
         <details id="privacyDisclosure" class="privacy-disclosure" open>
           <summary class="disclosure-toggle">Uso de datos y privacidad<svg class="disclosure-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
           <p>Job Log guarda la oferta en tu planilla. Si necesita IA, envía texto a Gemini o Groq con tus claves y puede usar la otra como respaldo. Las claves y preferencias se guardan en el almacenamiento sincronizable del navegador (Chrome Sync o Firefox Sync, si activaste la sincronización de extensiones). Google concede acceso a los archivos que autorizás para Job Log. El token y el correo disponible quedan en este navegador.</p>
           <label for="privacyConsent"><input type="checkbox" id="privacyConsent" required> Acepto este uso de datos.</label>
         </details>
         <p class="privacy-links"><a href="https://job-log.emanuelcabral.dev/privacy" target="_blank" rel="noopener noreferrer">Privacidad</a> · <a href="https://job-log.emanuelcabral.dev/terms" target="_blank" rel="noopener noreferrer">Condiciones</a></p>
-        <button type="submit" class="btn-save" id="btnSave">Guardar configuración</button>
+        <button type="submit" class="btn-save" id="btnSave">Guardar claves</button>
       </form>
       <div id="status" class="status-msg" role="status" aria-live="polite"></div>
+      </div>
     </div>
 
-    <div class="card" id="googleAccountCard">
+    <div class="card" id="googleAccountCard" hidden>
       <div class="header-with-badge">
-        <h2>Cuenta de Google</h2>
+        <h2 id="googleStepHeading" tabindex="-1">2. Conectar tu planilla</h2>
         <span id="googleAccountBadge" class="badge" style="display: none;"></span>
       </div>
+      <div id="googleStepSummary" class="step-summary" hidden>
+        <p>Planilla conectada</p>
+        <div class="step-actions">
+          <a id="googleSummaryLink" target="_blank" rel="noopener noreferrer">Abrir planilla</a>
+          <button type="button" class="btn-save secondary" id="btnEditSheet">Cambiar planilla</button>
+          <button type="button" class="btn-save secondary" id="btnShowGoogle">Ver cuenta</button>
+        </div>
+      </div>
+      <div id="googleStepContent">
       <div class="subtitle">
-        <div id="googleTemplateHelp">Creá tu copia desde la <a href="https://docs.google.com/spreadsheets/d/1pmP8vlTjwJwgYJL89mQZGuCMvN2pDb6_9oSI4HjAvPo/template/preview" target="_blank" rel="noopener noreferrer" style="color: var(--text-main);">plantilla de Job Log</a> y volvé para autorizarla.</div>
+        <div id="googleTemplateHelp">Creá tu copia de la <a href="https://docs.google.com/spreadsheets/d/1pmP8vlTjwJwgYJL89mQZGuCMvN2pDb6_9oSI4HjAvPo/template/preview" target="_blank" rel="noopener noreferrer" style="color: var(--text-main);">plantilla de Job Log</a> y después autorizala.</div>
         <div id="googleAccountHelp">Pulsá Autorizar planilla y elegí tu copia en Google. La selección se guarda automáticamente.</div>
         <a id="googleSpreadsheetLink" target="_blank" rel="noopener noreferrer" style="display: none;">Abrir planilla</a>
       </div>
@@ -653,9 +672,38 @@
         <button type="button" class="btn-danger" id="btnDisconnectGoogle" style="display: none;">Cerrar sesión</button>
       </div>
       <div id="googleStatus" class="status-msg" role="status" aria-live="polite"></div>
+      </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="goalCard" hidden>
+      <div class="header-with-badge">
+        <h2 id="goalStepHeading" tabindex="-1">3. Elegir el objetivo semanal</h2>
+      </div>
+      <div id="goalStepSummary" class="step-summary" hidden>
+        <p id="goalSummaryText"></p>
+        <button type="button" class="btn-save secondary" id="btnEditGoal">Editar objetivo</button>
+      </div>
+      <div id="goalStepContent">
+        <div class="subtitle">¿Cuántos CVs querés enviar por semana? El objetivo se guarda en tu planilla.</div>
+        <form id="goalForm">
+          <div class="form-group">
+            <label for="cvGoal">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+              <span>Objetivo de CVs por semana</span>
+            </label>
+            <div class="stepper-wrapper">
+              <button type="button" class="stepper-btn" id="btnMinus" aria-label="Reducir el objetivo">-</button>
+              <input type="number" id="cvGoal" value="25" min="1" step="1" required autocomplete="off">
+              <button type="button" class="stepper-btn" id="btnPlus" aria-label="Aumentar el objetivo">+</button>
+            </div>
+          </div>
+          <button type="submit" class="btn-save" id="btnSaveGoal">Guardar objetivo</button>
+        </form>
+        <div id="goalStatus" class="status-msg" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div class="card" id="weeksCard" hidden>
       <div class="header-with-badge">
         <h2>Gestión de semanas</h2>
       </div>

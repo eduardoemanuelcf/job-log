@@ -360,9 +360,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         const credentials = { ...config, cached_weeks: cache.cached_weeks };
 
-        if (!credentials.privacy_consent || (!credentials.gemini_api_key && !credentials.groq_api_key) || !credentials.spreadsheet_id) {
+        if (!hasConfiguredAI(credentials) || !credentials.spreadsheet_id || !hasConfiguredGoal(credentials)) {
             normalArea.style.display = 'none';
             configRequiredArea.style.display = 'flex';
+            if (hasConfiguredAI(credentials) && !credentials.spreadsheet_id) {
+                document.getElementById('configRequiredText').textContent = 'Tus claves están guardadas. Conectá tu planilla para continuar.';
+                btnConfigurar.textContent = 'Autorizar planilla';
+            } else if (hasConfiguredAI(credentials)) {
+                document.getElementById('configRequiredText').textContent = 'Tu planilla está conectada. Elegí el objetivo semanal para terminar la configuración.';
+                btnConfigurar.textContent = 'Elegir objetivo';
+            }
             return;
         }
 

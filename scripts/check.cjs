@@ -13,7 +13,7 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, node()]));
     function node() {
         return { value: '', checked: false, disabled: false, style: {}, handlers: {}, children: [], parentElement: { clientWidth: 864 },
-            addEventListener(name, fn) { this.handlers[name] = fn; },
+            addEventListener(name, fn) { this.handlers[name] = fn; }, focus() { this.focused = true; },
             appendChild(child) { this.children.push(child); },
             append(...children) { this.children.push(...children); },
             replaceChildren(...children) { this.children = children; },
@@ -69,12 +69,21 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     assert(manifest.description.length <= 132);
     assert(!manifest.host_permissions);
     assert(!existsSync(resolve(root, 'notice.json')));
-    const config = { gemini_api_key: 'test-key', spreadsheet_id: 'test-sheet', current_week: 'Semana 1' };
+    const config = { gemini_api_key: 'test-key', spreadsheet_id: 'test-sheet', current_week: 'Semana 1', cv_goal: '25' };
     for (const firefox of [false, true]) {
         const firstRun = popup('popup.js', { ...config }, {}, firefox);
         await firstRun.ready();
         assert.equal(firstRun.elements.get('configRequiredArea').style.display, 'flex');
         assert.equal(firstRun.calls.length, 0, 'No background data request before consent');
+
+        const pendingSheet = popup('popup.js', { gemini_api_key: 'saved-key', privacy_consent: true }, {}, firefox);
+        await pendingSheet.ready();
+        assert.equal(pendingSheet.elements.get('configRequiredArea').style.display, 'flex');
+        assert(pendingSheet.elements.get('configRequiredText').textContent.includes('claves están guardadas'));
+        assert.equal(pendingSheet.elements.get('btnConfigurar').textContent, 'Autorizar planilla');
+        await pendingSheet.elements.get('btnConfigurar').handlers.click();
+        assert(pendingSheet.optionsOpened());
+        assert.equal(pendingSheet.calls.length, 0, 'Missing a sheet must not trigger data requests');
 
         const signedIn = popup('popup.js', { ...config, privacy_consent: true }, { google_access_token: 'test-token', google_token_scope: googleScope, google_token_expires_at: Date.now() + 3600000, cached_weeks: ['Semana 1'] }, firefox);
         await signedIn.ready();
@@ -283,9 +292,101 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     }
 
     for (const firefox of [false, true]) {
+        const sync = {}, local = {};
+        const preferences = popup('options.js', sync, local, firefox);
+        preferences.context.chrome.identity.getAuthToken = ({ interactive }, callback) => { assert(!interactive); callback(undefined); };
+        preferences.context.chrome.identity.launchWebAuthFlow = ({ interactive }, callback) => { assert(!interactive); callback(undefined); };
+        await preferences.ready();
+        assert(!preferences.elements.get('aiStepContent').hidden);
+        assert(preferences.elements.get('googleAccountCard').hidden);
+        assert(preferences.elements.get('goalCard').hidden);
+        preferences.elements.get('geminiApiKey').value = 'saved-key';
+        preferences.elements.get('privacyConsent').checked = true;
+        preferences.elements.get('cvGoal').value = 'not-a-goal';
+        await preferences.elements.get('configForm').handlers.submit({ preventDefault() {} });
+        assert.equal(sync.gemini_api_key, 'saved-key');
+        assert.equal(sync.ai_provider, 'gemini');
+        assert.equal(sync.privacy_consent, true);
+        assert(!sync.spreadsheet_id && !sync.cv_goal, 'Saving keys must not save a sheet or goal');
+        assert.equal(preferences.calls.length, 0, 'Saving keys must not call Google or Sheets');
+        assert(preferences.elements.get('aiStepContent').hidden);
+        assert(!preferences.elements.get('googleStepContent').hidden);
+        assert(preferences.elements.get('goalCard').hidden);
+
+        const reopened = popup('options.js', sync, local, firefox);
+        await reopened.ready();
+        assert.equal(reopened.elements.get('geminiApiKey').value, 'saved-key');
+        assert(!reopened.elements.get('googleStepContent').hidden, 'Resume at the pending step');
+        preferences.elements.get('geminiApiKey').value = 'unsaved-key';
+        preferences.context.chrome.identity.launchWebAuthFlow = ({ url }, callback) => {
+            const params = new URL(url).searchParams;
+            callback(`${params.get('redirect_uri')}#picked_file_ids=first-sheet&access_token=picker-token&scope=${encodeURIComponent(googleScope)}&state=${params.get('state')}`);
+        };
+        await preferences.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(sync.gemini_api_key, 'saved-key', 'Picker preserves saved AI preferences');
+        assert.equal(sync.spreadsheet_id, 'first-sheet');
+        assert.equal(sync.cv_goal_spreadsheet_id, '');
+        assert(!preferences.calls.some(call => call.options.method === 'PUT'), 'Choosing a sheet must not apply a goal');
+        assert(!preferences.elements.get('goalStepContent').hidden);
+        assert(preferences.elements.get('setupComplete').hidden);
+        const pendingGoal = popup('popup.js', sync, local, firefox);
+        await pendingGoal.ready();
+        assert.equal(pendingGoal.elements.get('btnConfigurar').textContent, 'Elegir objetivo');
+        assert.equal(pendingGoal.calls.length, 0);
+        for (const goal of ['0', '-1', '1.5', '2foo', '9007199254740992']) {
+            preferences.elements.get('cvGoal').value = goal;
+            await preferences.elements.get('goalForm').handlers.submit({ preventDefault() {} });
+            assert(!sync.cv_goal, 'Invalid goals must not be persisted');
+            assert(!preferences.calls.some(call => call.options.method === 'PUT'));
+        }
+        preferences.elements.get('cvGoal').value = '30';
+        const originalFetch = preferences.context.fetch;
+        preferences.context.fetch = async (url, options) => {
+            const response = await originalFetch(url, options);
+            return options?.method === 'PUT' ? { ok: false, status: 503, json: async () => ({}) } : response;
+        };
+        await preferences.elements.get('goalForm').handlers.submit({ preventDefault() {} });
+        assert(!sync.cv_goal);
+        assert.equal(sync.spreadsheet_id, 'first-sheet');
+        assert.equal(sync.gemini_api_key, 'saved-key');
+        assert.equal(preferences.elements.get('goalStatus').className, 'status-msg warning');
+        assert(preferences.elements.get('goalStatus').textContent.includes('Guardar objetivo para reintentar'));
+        assert(preferences.elements.get('setupComplete').hidden);
+        preferences.context.fetch = originalFetch;
+        const originalSet = preferences.context.chrome.storage.sync.set;
+        preferences.context.chrome.storage.sync.set = (values, callback) => {
+            preferences.context.chrome.runtime.lastError = { message: 'Storage unavailable' };
+            callback();
+            delete preferences.context.chrome.runtime.lastError;
+        };
+        await preferences.elements.get('goalForm').handlers.submit({ preventDefault() {} });
+        assert(!sync.cv_goal, 'A failed local save must not complete setup even if Sheets succeeded');
+        assert(preferences.elements.get('setupComplete').hidden);
+        assert(!preferences.elements.get('btnEditSheet').disabled, 'Unlock setup controls after a failed save');
+        preferences.context.chrome.storage.sync.set = originalSet;
+        await preferences.elements.get('goalForm').handlers.submit({ preventDefault() {} });
+        assert.equal(sync.cv_goal, '30');
+        assert.equal(sync.cv_goal_spreadsheet_id, 'first-sheet');
+        assert(!preferences.elements.get('setupComplete').hidden);
+        assert(!preferences.elements.get('weeksCard').hidden);
+        assert(preferences.elements.get('goalStepContent').hidden);
+        assert.deepEqual(JSON.parse(preferences.calls.find(call => call.options.method === 'PUT').options.body).values, [[30]]);
+        const completed = popup('options.js', sync, local, firefox);
+        await completed.ready();
+        assert(!completed.elements.get('setupComplete').hidden, 'Completed users do not repeat onboarding');
+        await completed.elements.get('btnEditAI').handlers.click();
+        completed.elements.get('geminiApiKey').value = 'discarded-key';
+        await completed.elements.get('btnCancelEdit').handlers.click();
+        assert.equal(completed.elements.get('geminiApiKey').value, 'saved-key');
+        assert.equal(sync.gemini_api_key, 'saved-key');
+        assert(!completed.elements.get('setupComplete').hidden);
+    }
+
+    for (const firefox of [false, true]) {
         const sync = { spreadsheet_id: 'old-sheet', current_week: 'Semana 5', gemini_api_key: 'saved-key', cv_goal: '30' };
         const local = { cached_weeks: ['Semana 5'] };
         const picker = popup('options.js', sync, local, firefox);
+        await picker.ready();
         assert(!picker.elements.has('spreadsheetId'), 'Choose in Google without a URL input');
         picker.elements.get('geminiApiKey').value = 'unsaved-key';
         let response = 'new-sheet';
@@ -303,7 +404,9 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         await picker.elements.get('btnConnectGoogle').handlers.click();
         assert.equal(picker.writes.length, 0, 'Consent is required before opening Picker');
         assert.equal(picker.elements.get('googleTemplateHelp').hidden, false, 'Show the template link until a spreadsheet is authorized');
-        picker.elements.get('privacyConsent').checked = true;
+        sync.privacy_consent = true;
+        await picker.ready();
+        picker.elements.get('geminiApiKey').value = 'unsaved-key';
         response = 'invalid/id';
         await picker.elements.get('btnConnectGoogle').handlers.click();
         assert.equal(picker.writes.length, 0, 'An invalid file must not be cached');
@@ -314,8 +417,12 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert.equal(sync.privacy_consent, true);
         assert.equal(sync.gemini_api_key, 'saved-key', 'Authorizing a sheet must preserve the saved preferences');
         assert.equal(sync.cv_goal, '30');
+        assert(!picker.calls.some(call => call.options.method === 'PUT'), 'Confirm the goal separately after changing sheets');
+        assert.equal(sync.cv_goal_spreadsheet_id, '');
+        picker.elements.get('cvGoal').value = '30';
+        await picker.elements.get('goalForm').handlers.submit({ preventDefault() {} });
         assert(!local.cached_weeks && !sync.current_week, 'Authorization must clear the previous spreadsheet weeks');
-        assert.equal(picker.elements.get('googleStatus').textContent, 'Planilla autorizada y guardada.');
+        assert(!picker.elements.get('googleStepSummary').hidden);
         assert.equal(picker.elements.get('googleSpreadsheetLink').href, 'https://docs.google.com/spreadsheets/d/new-sheet/edit');
         assert.equal(local.google_token_scope, googleScope);
         assert.equal(picker.elements.get('btnConnectGoogle').style.display, 'inline-flex', 'Keep Picker available while connected');
@@ -338,7 +445,11 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         sync.current_week = 'Semana 1';
         await picker.elements.get('configForm').handlers.submit({ preventDefault() {} });
         assert.equal(sync.spreadsheet_id, 'new-sheet');
-        assert.equal(picker.elements.get('googleStatus').textContent, '', 'Clear the save reminder after saving');
+        assert.equal(sync.cv_goal, '30', 'Saving keys must preserve the saved goal');
+        await picker.elements.get('btnEditGoal').handlers.click();
+        await picker.elements.get('goalForm').handlers.submit({ preventDefault() {} });
+        assert.equal(sync.cv_goal, '25');
+        assert.equal(picker.elements.get('googleStatus').textContent, '', 'Authorization has no redundant save reminder');
         assert.equal(picker.elements.get('googleStatus').className, 'status-msg', 'Hide the cleared confirmation instead of leaving an empty success box');
         assert.equal(local.cached_weeks[0], 'Semana 1', 'Saving other preferences must preserve the selected spreadsheet weeks');
         assert.equal(sync.current_week, 'Semana 1');
@@ -379,8 +490,8 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
         assert(picker.elements.get('googleStatus').textContent.includes('no se pudo guardar'), 'A failed write must not report success');
         assert.equal(picker.elements.get('googleStatus').className, 'status-msg error');
         picker.context.chrome.storage.sync.set = nativeSet;
-        await picker.elements.get('configForm').handlers.submit({ preventDefault() {} });
-        assert.equal(picker.elements.get('status').textContent, 'Configuración guardada correctamente', 'Manual Save can retry a failed automatic write');
+        await picker.elements.get('btnConnectGoogle').handlers.click();
+        assert.equal(picker.elements.get('googleStatus').textContent, '', 'Selecting again retries a failed automatic write');
         assert.equal(sync.spreadsheet_id, 'failed-sheet');
 
         const nativeRemove = picker.context.chrome.storage.local.remove;
@@ -448,9 +559,9 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     await options.elements.get('configForm').handlers.submit({ preventDefault() {} });
     assert.equal(options.writes.length, 0, 'Consent is required before saving');
     options.elements.get('privacyConsent').checked = true;
-    vm.runInContext('configuredSpreadsheetId = "invalid/id"', options.context);
-    await options.elements.get('configForm').handlers.submit({ preventDefault() {} });
-    assert.equal(options.writes.length, 0, 'Invalid Sheet ID must not be saved');
+    options.elements.get('cvGoal').value = '0';
+    await options.elements.get('goalForm').handlers.submit({ preventDefault() {} });
+    assert.equal(options.writes.length, 0, 'Invalid goals must not be saved');
 
     const gemini = popup();
     gemini.context.fetch = async (url, options) => {
@@ -467,5 +578,5 @@ function popup(script = 'popup.js', sync = {}, local = {}, firefox = false) {
     assert(gemini.calls[1].url.includes('/gemini-3.6-flash:generateContent?'));
     assert.equal(JSON.parse(gemini.calls[1].options.body).generationConfig.thinkingConfig.thinkingLevel, 'minimal');
     assert(!gemini.calls.some(call => call.url.includes('/gemini-3.5-flash:')), 'Do not use the deprecated Flash model');
-    console.log('Checks passed: Chrome/Firefox registration and notes, progress, consent, drive.file migration, Picker validation/cancellation/save, OAuth renewal/disconnect, Gemini 3.6 fallback and input validation.');
+    console.log('Checks passed: Chrome/Firefox registration and notes, progress, consent, drive.file migration, guided setup, independent keys/goal saving, Picker validation/cancellation/save, OAuth renewal/disconnect, Gemini 3.6 fallback and input validation.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

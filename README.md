@@ -13,7 +13,7 @@ Para Gemini, usa `gemini-3.5-flash-lite` y, si necesita reintentar con otro mode
 Antes de instalar la extensión, creá tu copia de la planilla:
 
 1. Abrí la [plantilla de Google Sheets de Job Log](https://docs.google.com/spreadsheets/d/1pmP8vlTjwJwgYJL89mQZGuCMvN2pDb6_9oSI4HjAvPo/template/preview).
-   También podés abrirla desde el botón **Get the Sheets template** de [la web](https://job-log.emanuelcabral.dev/) o desde **Cuenta de Google → plantilla de Job Log** en la configuración inicial de la extensión.
+   También podés abrirla desde el botón **Get the Sheets template** de [la web](https://job-log.emanuelcabral.dev/) o desde **Conectar tu planilla → plantilla de Job Log** en la configuración de la extensión.
 2. Hacé clic en **"Utilizar plantilla"** (esquina superior derecha). Esto crea una copia limpia y privada en tu Google Drive.
 3. Más adelante, elegí esa copia en el selector de Google desde la configuración de Job Log.
 
@@ -61,10 +61,13 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
    - **IA principal:** elegí Gemini o Groq. La otra queda como respaldo si cargaste su clave.
    - **Gemini API Key:** pegá tu clave de Gemini.
    - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
-3. Aceptá el uso de datos y pulsá **Autorizar planilla** en **Cuenta de Google**. Elegí tu copia de la plantilla en el selector: Job Log la autoriza y guarda automáticamente, sin copiar ni pegar enlaces.
-4. Hacé clic en **Guardar configuración** para aplicar las claves de IA, el proveedor y el objetivo semanal que ingresaste. La planilla autorizada ya queda guardada.
+3. Aceptá el uso de datos y pulsá **Guardar claves**. Las claves y la IA principal quedan guardadas. El primer paso se resume y aparece **Conectar tu planilla**.
+4. Pulsá **Autorizar planilla** y elegí tu copia de la plantilla en el selector de Google. La selección se guarda automáticamente y aparece **Elegir el objetivo semanal**.
+5. Elegí cuántos CVs querés enviar por semana y pulsá **Guardar objetivo**. Job Log lo guarda en Sheets y en la configuración; después muestra **Job Log está listo para registrar postulaciones**.
 
-Después de autorizarla, el botón pasa a **Cambiar planilla** y permite elegir otra en Google, que también se guarda automáticamente. **Abrir planilla** abre la selección actual en Google Sheets.
+Los pasos completados quedan resumidos. Podés **Editar claves**, **Cambiar planilla** y **Editar objetivo**. Al cambiar de planilla, confirmá el objetivo para la nueva selección. **Abrir planilla** abre la selección actual y **Ver cuenta** permite consultar la cuenta conectada o cerrar sesión.
+
+Si falla el guardado del objetivo, tus claves y la planilla seleccionada siguen guardadas. Revisá la conexión y pulsá **Guardar objetivo** para reintentar. El popup indica si falta conectar la planilla o elegir el objetivo. La configuración retoma el paso pendiente al volver a abrirla y conserva los ajustes de quienes ya usaban la extensión.
 
 ![Paso 2: Panel de configuración de credenciales](./docs/assets/02-configuration.png)
 

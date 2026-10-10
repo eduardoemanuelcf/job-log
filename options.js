@@ -1,8 +1,16 @@
 let configuredSpreadsheetId = '';
+let setupConfig = {};
+let editingStep = 0;
+
+const setSetupBusy = busy => {
+    for (const id of ['btnSave', 'btnSaveGoal', 'btnConnectGoogle', 'btnDisconnectGoogle', 'btnEditAI', 'btnEditSheet', 'btnEditGoal', 'btnShowGoogle', 'btnCancelEdit']) {
+        document.getElementById(id).disabled = busy;
+    }
+};
 
 const saveConfig = async (values) => {
     const previous = await loadConfig();
-    if (previous.spreadsheet_id !== values.spreadsheet_id) {
+    if (Object.hasOwn(values, 'spreadsheet_id') && previous.spreadsheet_id !== values.spreadsheet_id) {
         await new Promise((resolve, reject) => chrome.storage.local.remove(['cached_weeks'], () => {
             if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
             else resolve();
@@ -16,6 +24,29 @@ const saveConfig = async (values) => {
         if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
         else resolve();
     }));
+};
+
+const syncSpreadsheetGoal = async (spreadsheetId, cvGoal) => {
+    const token = await getGoogleAccessTokenSilently();
+    const metaResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!metaResponse.ok) throw await sheetsError(metaResponse, 'Error al acceder a la planilla');
+    const metaData = await metaResponse.json();
+    await new Promise(resolve => chrome.storage.local.set({ google_authorized_spreadsheet_id: spreadsheetId }, resolve));
+    const title = metaData.sheets?.find(s => ['progreso', 'progreso semanal'].includes(s.properties?.title?.trim().toLowerCase()))?.properties.title;
+    if (!title) throw new Error('No se encontró la pestaña Progreso o Progreso semanal en la planilla.');
+    const range = `'${title.replace(/'/g, "''")}'!I2`;
+    const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+        {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ range, majorDimension: 'ROWS', values: [[Number(cvGoal)]] })
+        }
+    );
+    if (!response.ok) throw await sheetsError(response, 'Error al actualizar objetivo en la planilla');
 };
 
 let googleAuthorizedSpreadsheetId = '';
@@ -32,11 +63,37 @@ const updateGoogleSpreadsheetAction = () => {
     const link = document.getElementById('googleSpreadsheetLink');
     link.style.display = /^[a-zA-Z0-9_-]+$/.test(configuredSpreadsheetId) ? 'inline-block' : 'none';
     link.href = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(configuredSpreadsheetId)}/edit`;
+    document.getElementById('googleSummaryLink').href = link.href;
+};
+
+const renderSetup = () => {
+    const aiReady = hasConfiguredAI(setupConfig);
+    const sheetReady = aiReady && /^[a-zA-Z0-9_-]+$/.test(configuredSpreadsheetId) && configuredSpreadsheetId === googleAuthorizedSpreadsheetId;
+    const goalReady = sheetReady && hasConfiguredGoal(setupConfig);
+    const pendingStep = !aiReady ? 1 : !sheetReady ? 2 : !goalReady ? 3 : 0;
+    const activeStep = editingStep || pendingStep;
+    document.getElementById('aiStepContent').hidden = activeStep !== 1;
+    document.getElementById('aiStepSummary').hidden = !aiReady || activeStep === 1;
+    document.getElementById('aiSummaryText').textContent = `Claves guardadas · ${setupConfig.ai_provider === 'groq' ? 'Groq' : 'Gemini'}`;
+    document.getElementById('googleAccountCard').hidden = !aiReady || (activeStep === 1 && !sheetReady);
+    document.getElementById('googleStepContent').hidden = activeStep !== 2;
+    document.getElementById('googleStepSummary').hidden = !sheetReady || activeStep === 2;
+    document.getElementById('goalCard').hidden = !sheetReady;
+    document.getElementById('goalStepContent').hidden = activeStep !== 3;
+    document.getElementById('goalStepSummary').hidden = !goalReady || activeStep === 3;
+    document.getElementById('goalSummaryText').textContent = `Objetivo guardado · ${setupConfig.cv_goal} CVs por semana`;
+    document.getElementById('weeksCard').hidden = !goalReady || activeStep !== 0;
+    document.getElementById('setupComplete').hidden = !goalReady || activeStep !== 0;
+    document.getElementById('btnCancelEdit').hidden = !editingStep || editingStep === pendingStep;
+    document.getElementById('setupProgress').textContent = activeStep
+        ? `Paso ${activeStep} de 3 · ${['', 'Configurá la IA', 'Conectá tu planilla', 'Elegí tu objetivo semanal'][activeStep]}`
+        : 'Configuración completa';
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const data = await loadConfig();
+        setupConfig = data;
 
         if (data.gemini_api_key) {
             document.getElementById('geminiApiKey').value = data.gemini_api_key;
@@ -55,12 +112,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         document.getElementById('privacyConsent').checked = data.privacy_consent === true;
         document.getElementById('privacyDisclosure').open = data.privacy_consent !== true;
-        updateGoogleAccountUI();
+        renderSetup();
+        if (hasConfiguredAI(data)) await updateGoogleAccountUI();
+        else updateGoogleSpreadsheetAction();
 
     } catch (err) {
         const status = document.getElementById('status');
         status.className = 'status-msg error';
-        status.textContent = 'Error al cargar la configuración';
+        status.textContent = 'No se pudo cargar la configuración. Cerrá esta página y volvé a abrirla.';
     }
 });
 
@@ -105,144 +164,110 @@ document.getElementById('btnPlus').addEventListener('click', () => {
 
 document.getElementById('configForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const btnSave = document.getElementById('btnSave');
     const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
     const groqApiKey = document.getElementById('groqApiKey').value.trim();
     const aiProvider = document.querySelector('input[name="aiProvider"]:checked').value;
-    const cvGoal = document.getElementById('cvGoal').value.trim() || '25';
     const status = document.getElementById('status');
 
     if (!document.getElementById('privacyConsent').checked) {
         status.className = 'status-msg error';
-        status.textContent = 'Aceptá el uso de datos para guardar la configuración.';
+        status.textContent = 'Aceptá el uso de datos antes de guardar las claves.';
         return;
     }
     if (!geminiApiKey && !groqApiKey) {
         status.className = 'status-msg error';
-        status.textContent = 'Debes ingresar al menos una API Key (Gemini o Groq)';
+        status.textContent = 'Ingresá al menos una clave API de Gemini o Groq.';
+        return;
+    }
+    if (!(aiProvider === 'groq' ? groqApiKey : geminiApiKey)) {
+        status.className = 'status-msg error';
+        status.textContent = `Ingresá la clave API de ${aiProvider === 'groq' ? 'Groq' : 'Gemini'}, la IA que elegiste como principal.`;
         return;
     }
 
-    const claveElegida = aiProvider === 'groq' ? groqApiKey : geminiApiKey;
-    if (!claveElegida) {
+    setSetupBusy(true);
+    btnSave.textContent = 'Guardando claves...';
+    try {
+        await saveConfig({ gemini_api_key: geminiApiKey, groq_api_key: groqApiKey, ai_provider: aiProvider, privacy_consent: true });
+        setupConfig = await loadConfig();
+        document.getElementById('privacyDisclosure').open = false;
+        status.className = 'status-msg';
+        status.textContent = '';
+        editingStep = 0;
+        renderSetup();
+        if (!googleAuthorizedSpreadsheetId) document.getElementById('googleStepHeading').focus();
+    } catch (err) {
+        console.error('[Job Log Options] No se pudieron guardar las claves:', err);
         status.className = 'status-msg error';
-        status.textContent = `Elegiste ${aiProvider === 'groq' ? 'Groq' : 'Gemini'} como IA principal pero no cargaste su API Key`;
-        return;
+        status.textContent = 'No se pudieron guardar las claves. Volvé a intentarlo.';
+    } finally {
+        setSetupBusy(false);
+        btnSave.textContent = 'Guardar claves';
     }
+});
 
-    const spreadsheetId = configuredSpreadsheetId;
-    if (!/^[a-zA-Z0-9_-]+$/.test(spreadsheetId)) {
-        status.className = 'status-msg error';
-        status.textContent = 'Elegí una planilla con Autorizar planilla antes de guardar la configuración.';
-        return;
-    }
-    if (!/^\d+$/.test(cvGoal) || !Number.isSafeInteger(Number(cvGoal)) || Number(cvGoal) < 1) {
+document.getElementById('goalForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const button = document.getElementById('btnSaveGoal');
+    const status = document.getElementById('goalStatus');
+    const goal = document.getElementById('cvGoal').value.trim();
+    if (!/^\d+$/.test(goal) || !Number.isSafeInteger(Number(goal)) || Number(goal) < 1) {
         status.className = 'status-msg error';
         status.textContent = 'Ingresá un objetivo entero mayor que cero.';
         return;
     }
-
-    btnSave.disabled = true;
-    btnSave.textContent = 'Guardando...';
-
-    try {
-        await saveConfig({
-            gemini_api_key: geminiApiKey,
-            groq_api_key: groqApiKey,
-            ai_provider: aiProvider,
-            spreadsheet_id: spreadsheetId,
-            cv_goal: cvGoal,
-            privacy_consent: true
-        });
-
-        document.getElementById('privacyDisclosure').open = false;
-        let sheetWarning = null;
-        try {
-            const token = await getGoogleAccessToken();
-            if (token) {
-                const metaResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!metaResponse.ok) {
-                    throw await sheetsError(metaResponse, 'Error al acceder a la planilla');
-                }
-                const metaData = await metaResponse.json();
-                await new Promise(resolve => chrome.storage.local.set({ google_authorized_spreadsheet_id: spreadsheetId }, resolve));
-                let exactProgresoTitle = '';
-                for (const s of metaData.sheets || []) {
-                    if (s.properties && s.properties.title && (s.properties.title.trim().toLowerCase() === 'progreso' || s.properties.title.trim().toLowerCase() === 'progreso semanal')) {
-                        exactProgresoTitle = s.properties.title;
-                        break;
-                    }
-                }
-                if (exactProgresoTitle) {
-                    const updateGoalBody = {
-                        range: `'${exactProgresoTitle}'!I2`,
-                        majorDimension: 'ROWS',
-                        values: [[parseInt(cvGoal, 10)]]
-                    };
-                    const updateGoalResp = await fetch(
-                        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(`'${exactProgresoTitle}'!I2`)}?valueInputOption=USER_ENTERED`,
-                        {
-                            method: 'PUT',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(updateGoalBody)
-                        }
-                    );
-                    if (!updateGoalResp.ok) {
-                        throw await sheetsError(updateGoalResp, 'Error al actualizar objetivo en la planilla');
-                    }
-                }
-            }
-        } catch (sheetsErr) {
-            console.warn('[Job Log Options] No se pudo acceder a Sheets:', sheetsErr);
-            sheetWarning = sheetsErr.message;
-        }
-
-        await updateGoogleAccountUI();
-        if (sheetWarning) {
-            btnSave.className = 'btn-save';
-            btnSave.textContent = 'Guardado con advertencias';
-
-            status.className = 'status-msg warning';
-            status.textContent = `Configuración guardada, pero no se pudo acceder a la planilla: ${sheetWarning}`;
-
-            setTimeout(() => {
-                btnSave.className = 'btn-save';
-                btnSave.textContent = 'Guardar configuración';
-                btnSave.disabled = false;
-            }, 5000);
-        } else {
-            btnSave.className = 'btn-save success';
-            btnSave.textContent = 'Configuración guardada';
-
-            status.className = 'status-msg success';
-            status.textContent = 'Configuración guardada correctamente';
-            document.getElementById('googleStatus').textContent = '';
-            document.getElementById('googleStatus').className = 'status-msg';
-
-            setTimeout(() => {
-                btnSave.className = 'btn-save';
-                btnSave.textContent = 'Guardar configuración';
-                btnSave.disabled = false;
-
-                status.className = 'status-msg';
-                status.textContent = '';
-            }, 2000);
-        }
-    } catch (err) {
-        btnSave.className = 'btn-save';
-        btnSave.textContent = 'Guardar configuración';
-        btnSave.disabled = false;
-
+    if (!hasConfiguredAI(setupConfig) || !/^[a-zA-Z0-9_-]+$/.test(configuredSpreadsheetId) || configuredSpreadsheetId !== googleAuthorizedSpreadsheetId) {
         status.className = 'status-msg error';
-        status.textContent = 'Error al guardar la configuración';
+        status.textContent = 'Conectá tu planilla antes de guardar el objetivo.';
+        return;
     }
+    setSetupBusy(true);
+    button.textContent = 'Guardando objetivo...';
+    status.className = 'status-msg';
+    status.textContent = '';
+    try {
+        await syncSpreadsheetGoal(configuredSpreadsheetId, goal);
+        await saveConfig({ spreadsheet_id: configuredSpreadsheetId, cv_goal: goal, cv_goal_spreadsheet_id: configuredSpreadsheetId });
+        setupConfig = await loadConfig();
+        editingStep = 0;
+        renderSetup();
+        document.getElementById('setupComplete').focus();
+    } catch (err) {
+        console.warn('[Job Log Options] No se pudo guardar el objetivo:', err);
+        status.className = 'status-msg warning';
+        status.textContent = err.message.includes('pestaña Progreso')
+            ? 'La planilla no tiene la pestaña Progreso o Progreso semanal. Elegí una copia de la plantilla de Job Log y volvé a guardar el objetivo.'
+            : 'No se pudo guardar el objetivo. Tus claves y la planilla siguen guardadas. Revisá la conexión y pulsá Guardar objetivo para reintentar.';
+    } finally {
+        setSetupBusy(false);
+        button.textContent = 'Guardar objetivo';
+    }
+});
+
+document.getElementById('btnEditAI').addEventListener('click', () => {
+    editingStep = 1;
+    renderSetup();
+    document.getElementById('geminiApiKey').focus();
+});
+document.getElementById('btnEditGoal').addEventListener('click', () => {
+    editingStep = 3;
+    renderSetup();
+    document.getElementById('cvGoal').focus();
+});
+
+document.getElementById('btnCancelEdit').addEventListener('click', () => {
+    document.getElementById('geminiApiKey').value = setupConfig.gemini_api_key || '';
+    document.getElementById('groqApiKey').value = setupConfig.groq_api_key || '';
+    document.getElementById(setupConfig.ai_provider === 'groq' ? 'aiGroq' : 'aiGemini').checked = true;
+    document.getElementById('privacyConsent').checked = setupConfig.privacy_consent === true;
+    document.getElementById('cvGoal').value = setupConfig.cv_goal || '25';
+    for (const id of ['status', 'googleStatus', 'goalStatus']) {
+        document.getElementById(id).className = 'status-msg';
+        document.getElementById(id).textContent = '';
+    }
+    editingStep = 0;
+    renderSetup();
 });
 
 document.getElementById('weekForm').addEventListener('submit', async (e) => {
@@ -265,7 +290,7 @@ document.getElementById('weekForm').addEventListener('submit', async (e) => {
         });
 
         if (!credentials.spreadsheet_id) {
-            throw new Error('Falta configurar y guardar la URL de Google Sheets.');
+            throw new Error('Pulsá Autorizar planilla para elegir tu copia de Google Sheets.');
         }
 
         let spreadsheetId = credentials.spreadsheet_id.trim();
@@ -600,6 +625,7 @@ const updateGoogleAccountUI = async () => {
     const local = await new Promise(resolve => chrome.storage.local.get(['google_authorized_spreadsheet_id'], resolve));
     googleAuthorizedSpreadsheetId = auth.isConnected ? local.google_authorized_spreadsheet_id || '' : '';
     updateGoogleSpreadsheetAction();
+    renderSetup();
 
     if (auth.isConnected) {
         if (btnConnect) btnConnect.style.display = 'inline-flex';
@@ -610,8 +636,9 @@ const updateGoogleAccountUI = async () => {
         }
 
         if (badge) {
-            badge.className = 'badge success';
-            badge.textContent = 'Conectada';
+            const authorized = configuredSpreadsheetId && configuredSpreadsheetId === googleAuthorizedSpreadsheetId;
+            badge.className = authorized ? 'badge success' : 'badge';
+            badge.textContent = authorized ? 'Conectada' : 'Pendiente';
             badge.style.display = 'inline-flex';
         }
 
@@ -641,48 +668,64 @@ const updateGoogleAccountUI = async () => {
 
         if (badge) {
             badge.className = 'badge';
-            badge.textContent = 'No conectada';
+            badge.textContent = 'Pendiente';
             badge.style.display = 'inline-flex';
         }
     }
 };
 
-document.getElementById('btnConnectGoogle').addEventListener('click', async () => {
+const connectGoogleSpreadsheet = async () => {
     const btn = document.getElementById('btnConnectGoogle');
     const status = document.getElementById('googleStatus');
-    btn.disabled = true;
-    btn.textContent = 'Autorizando...';
+    setSetupBusy(true);
+    btn.textContent = 'Autorizando planilla...';
     status.className = 'status-msg';
     status.textContent = '';
-
     try {
-        if (!document.getElementById('privacyConsent').checked) {
-            throw new Error('Aceptá el uso de datos antes de autorizar la planilla.');
-        }
+        if (!hasConfiguredAI(setupConfig)) throw new Error('Guardá tus claves API antes de conectar la planilla.');
         const selectedId = await pickGoogleSpreadsheet();
-        configuredSpreadsheetId = selectedId;
+        const previous = await loadConfig();
         try {
-            await saveConfig({ spreadsheet_id: selectedId, privacy_consent: true });
+            await saveConfig({
+                spreadsheet_id: selectedId,
+                cv_goal_spreadsheet_id: previous.spreadsheet_id === selectedId ? previous.cv_goal_spreadsheet_id ?? selectedId : '',
+                privacy_consent: true
+            });
         } catch (error) {
-            throw new Error(`La planilla fue autorizada, pero no se pudo guardar. Pulsá Guardar configuración para reintentar. ${error.message}`);
+            throw new Error('La planilla se autorizó, pero no se pudo guardar. Volvé a seleccionarla para reintentar.');
         }
-        status.className = 'status-msg success';
-        status.textContent = 'Planilla autorizada y guardada.';
+        configuredSpreadsheetId = selectedId;
+        setupConfig = await loadConfig();
+        editingStep = 0;
+        document.getElementById('goalStatus').className = 'status-msg';
+        document.getElementById('goalStatus').textContent = '';
         await updateGoogleAccountUI();
+        if (!hasConfiguredGoal(setupConfig)) document.getElementById('goalStepHeading').focus();
     } catch (err) {
-        console.error('Error connecting account:', err);
+        console.error('[Job Log Options] No se pudo conectar la planilla:', err);
         status.className = 'status-msg error';
-        status.textContent = `Error: ${err.message}`;
+        status.textContent = err.message.includes('no se pudo guardar') || err.message.includes('Guardá tus claves')
+            ? err.message
+            : 'No se pudo completar la autorización. Volvé a seleccionar la planilla para intentarlo de nuevo.';
+        editingStep = hasConfiguredAI(setupConfig) ? 2 : 1;
         await updateGoogleAccountUI();
     } finally {
-        btn.disabled = false;
+        setSetupBusy(false);
     }
+};
+
+document.getElementById('btnConnectGoogle').addEventListener('click', connectGoogleSpreadsheet);
+document.getElementById('btnEditSheet').addEventListener('click', connectGoogleSpreadsheet);
+document.getElementById('btnShowGoogle').addEventListener('click', () => {
+    editingStep = 2;
+    renderSetup();
+    document.getElementById('googleStepHeading').focus();
 });
 
 document.getElementById('btnDisconnectGoogle').addEventListener('click', async () => {
     const btn = document.getElementById('btnDisconnectGoogle');
     const status = document.getElementById('googleStatus');
-    btn.disabled = true;
+    setSetupBusy(true);
     btn.textContent = 'Cerrando sesión...';
     status.className = 'status-msg';
     status.textContent = '';
@@ -691,15 +734,16 @@ document.getElementById('btnDisconnectGoogle').addEventListener('click', async (
         await disconnectGoogle();
 
         status.className = 'status-msg success';
-        status.textContent = 'Sesión cerrada correctamente.';
+        status.textContent = 'Sesión cerrada. Tus claves y preferencias siguen guardadas.';
+        editingStep = 0;
         await updateGoogleAccountUI();
     } catch (err) {
         console.error('Error closing session:', err);
         status.className = 'status-msg error';
-        status.textContent = `Error al cerrar sesión: ${err.message}`;
+        status.textContent = 'No se pudo cerrar la sesión. Volvé a intentarlo.';
         await updateGoogleAccountUI();
     } finally {
-        btn.disabled = false;
+        setSetupBusy(false);
         btn.textContent = 'Cerrar sesión';
         setTimeout(() => {
             status.className = 'status-msg';
