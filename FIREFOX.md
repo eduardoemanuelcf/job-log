@@ -2,9 +2,17 @@
 
 Necesitás Firefox de escritorio 140 o posterior, una cuenta de Google, una [copia de la plantilla](https://docs.google.com/spreadsheets/d/1pmP8vlTjwJwgYJL89mQZGuCMvN2pDb6_9oSI4HjAvPo/template/preview) y una clave API de Gemini o Groq. Firefox Android no está incluido.
 
-## Instalar para probar
+## Instalar desde Firefox Add-ons
 
-La instalación disponible desde este repositorio es temporal: se elimina al cerrar Firefox. Para una instalación permanente, el paquete necesita la firma de Mozilla.
+1. Abrí [Job Log en Firefox Add-ons](https://addons.mozilla.org/es-ES/firefox/addon/job-log/).
+2. Pulsá **Agregar a Firefox** y confirmá la instalación.
+3. Abrí Job Log desde el menú de extensiones y continuá con la configuración de abajo.
+
+La instalación desde la tienda es permanente y recibe las versiones publicadas mediante las actualizaciones del navegador.
+
+## Instalar desde el código para probar
+
+Si querés probar o modificar el código, podés cargar el paquete generado desde este repositorio. Esta instalación es temporal: se elimina al cerrar Firefox.
 
 1. Descargá el repositorio desde **Code → Download ZIP** y extraelo, o clonalo con Git.
 2. Con Python 3 instalado, abrí una terminal en la carpeta del proyecto y ejecutá:

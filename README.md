@@ -2,9 +2,13 @@
 
 **Job Log** es una extensión gratuita y de código abierto para Chrome, Brave, Edge, Opera y Firefox de escritorio 140 o posterior. Registra tus postulaciones en una hoja de cálculo de Google Sheets. En LinkedIn intenta obtener el título y la empresa usando tu sesión iniciada. En otros portales de empleo usa **Gemini** o **Groq** para extraer la información del texto de la oferta: elegís cuál es la IA principal y la otra queda como respaldo.
 
+[Web del proyecto](https://job-log.emanuelcabral.dev/) · [Instalar en Chrome](https://chromewebstore.google.com/detail/job-log/ibmpgpcbdcabaeblnjocephjlhcfjhdd) · [Instalar en Firefox](https://addons.mozilla.org/es-ES/firefox/addon/job-log/)
+
 La extensión funciona desde tu navegador y se conecta directamente con Google, LinkedIn y los proveedores de IA que configurás. Job Log no opera un servidor intermediario.
 
-Para Gemini, usa `gemini-3.5-flash-lite` y, si necesita reintentar con otro modelo, `gemini-3.6-flash`. El modelo `gemini-3.5-flash` fue reemplazado; Flash-Lite sigue disponible. La disponibilidad y las cuotas dependen de tu cuenta de Google.
+Necesitás una cuenta de Google, una copia de la plantilla y una clave API de **Gemini o Groq**. Podés configurar ambos proveedores para habilitar el respaldo. Las cuotas y posibles cargos de IA dependen del proveedor y de tu cuenta.
+
+La implementación actual intenta `gemini-3.5-flash-lite` y `gemini-3.6-flash` para Gemini; para Groq, `openai/gpt-oss-20b` y `llama-3.3-70b-versatile`. La disponibilidad de esos modelos depende del proveedor.
 
 ---
 
@@ -21,9 +25,16 @@ Antes de instalar la extensión, creá tu copia de la planilla:
 
 ## Paso 1: Instalar la extensión
 
-La publicación en Chrome Web Store está en preparación. Mientras tanto, podés probarla en modo desarrollador:
+Job Log está publicada en ambas tiendas:
 
-Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La instalación desde el repositorio es temporal y se elimina al cerrar Firefox. Los pasos siguientes son para Chrome y los navegadores compatibles con sus extensiones.
+- **Chrome y navegadores Chromium compatibles:** instalala desde [Chrome Web Store](https://chromewebstore.google.com/detail/job-log/ibmpgpcbdcabaeblnjocephjlhcfjhdd).
+- **Firefox de escritorio 140 o posterior:** instalala desde [Firefox Add-ons](https://addons.mozilla.org/es-ES/firefox/addon/job-log/). Consultá la [guía de Firefox](./FIREFOX.md) para más detalles. Firefox Android no está incluido.
+
+Después de instalarla, fijá el icono en la barra de herramientas para acceder a Job Log y continuá con la configuración del paso 2.
+
+### Instalación desde el código para desarrollo
+
+Si querés probar o modificar el código, podés cargarla en modo desarrollador. En Firefox esta instalación es temporal y se elimina al cerrar el navegador; seguí [las instrucciones específicas](./FIREFOX.md#instalar-desde-el-código-para-probar). Los pasos siguientes son para Chrome y navegadores compatibles:
 
 1. **Descargá el código:**
    - Con Git: `git clone https://github.com/eduardoemanuelcf/job-log.git`
@@ -35,7 +46,7 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
      - Brave: `brave://extensions/`
      - Edge: `edge://extensions/`
    - Activá **"Modo de desarrollador"** (arriba a la derecha).
-   - Hacé clic en **"Cargar descomprimida"** y seleccioná la carpeta del proyecto (la que tiene el archivo `manifest.json`).
+   - Hacé clic en **"Cargar descomprimida"** y seleccioná la carpeta del proyecto (la que tiene el archivo `manifest.json`) o `dist/chrome`, generada con las instrucciones de empaquetado de abajo.
 
 ![Paso 1: Cargar extensión descomprimida](./docs/assets/01-load-unpacked.png)
 
@@ -43,12 +54,14 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
 
 ## Paso 2: Configurar la extensión
 
-### 2.1: Obtener tus API Keys (gratis)
+### 2.1: Obtener una clave API de Gemini o Groq
+
+Elegí al menos un proveedor. La clave del proveedor principal es obligatoria; la del segundo es opcional y permite usarlo como respaldo.
 
 * **Gemini API Key:**
   1. Entrá a [Google AI Studio](https://aistudio.google.com/app/apikey) e iniciá sesión con tu cuenta de Google.
   2. Hacé clic en **"Get API key"** → **"Create API key"**.
-* **Groq API Key (opcional):**
+* **Groq API Key:**
   1. Entrá a [Groq Console](https://console.groq.com/keys).
   2. Creá una clave API si querés usar Groq como IA principal, o como respaldo ante caídas o límites de cuota en Gemini.
 
@@ -59,9 +72,9 @@ Para **Firefox**, seguí la [guía de instalación y uso](./FIREFOX.md). La inst
 1. Hacé clic en el ícono de la extensión en la barra de herramientas y presioná **Configuración** (o clic derecho → **Opciones**).
 2. Completá los campos:
    - **IA principal:** elegí Gemini o Groq. La otra queda como respaldo si cargaste su clave.
-   - **Gemini API Key:** pegá tu clave de Gemini.
-   - **Groq API Key (opcional):** pegá tu clave de Groq si la tenés.
-3. Aceptá el uso de datos y pulsá **Guardar claves**. Las claves y la IA principal quedan guardadas. El primer paso se resume y aparece **Conectar tu planilla**.
+   - **Gemini API Key:** pegá tu clave si elegiste Gemini o querés usarlo como respaldo.
+   - **Groq API Key:** pegá tu clave si elegiste Groq o querés usarlo como respaldo.
+3. Aceptá el uso de datos y pulsá **Guardar claves**. Las claves y la IA principal quedan guardadas. El primer paso se resume y aparece **Conectar tu planilla**. Guardar confirma el almacenamiento de las claves, sin validarlas contra la API del proveedor.
 4. Pulsá **Autorizar planilla** y elegí tu copia de la plantilla en el selector de Google. La selección se guarda automáticamente y aparece **Elegir el objetivo semanal**.
 5. Elegí cuántos CVs querés enviar por semana y pulsá **Guardar objetivo**. Job Log lo guarda en Sheets y en la configuración; después muestra **Job Log está listo para registrar postulaciones**. Este aviso aparece solo al completar la configuración inicial y desaparece al refrescar o volver a abrir la página.
 
@@ -90,7 +103,7 @@ La última nota sin enviar se conserva al reabrir la misma oferta. Escribir en o
 
 ## Actualizaciones
 
-Las instalaciones desde Chrome Web Store o Firefox Add-ons recibirán las versiones publicadas mediante el sistema de actualización del navegador. Un push a GitHub no publica una versión en las tiendas.
+Las instalaciones desde Chrome Web Store o Firefox Add-ons reciben las versiones publicadas mediante el sistema de actualización del navegador. Un push a GitHub no publica una versión en las tiendas.
 
 Si instalaste desde el código, descargá la revisión que quieras y recargá la extensión en la página de extensiones del navegador. En Firefox, volvé a generar y cargar el paquete siguiendo [su guía](./FIREFOX.md).
 
@@ -105,6 +118,8 @@ python3 scripts/package.py --browser firefox
 ```
 
 Los paquetes quedan en `dist/`.
+
+Para probar en Chrome, Brave o Edge, cargá la carpeta del proyecto o `dist/chrome`. Ambas conservan la clave pública del manifiesto y el ID `ibmpgpcbdcabaeblnjocephjlhcfjhdd`, usado por OAuth. Los ZIP de distribución están preparados para las tiendas; cargar una copia extraída de esos ZIP en modo desarrollador puede darle otro ID y provocar `redirect_uri_mismatch` al conectar Google.
 
 ---
 
